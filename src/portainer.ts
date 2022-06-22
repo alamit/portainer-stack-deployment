@@ -84,19 +84,17 @@ export class PortainerClient {
      * @param payload {CreateStackPayload} - Payload for the stack to be created.
      */
     async createStack(payload: CreateStackPayload): Promise<Stack> {
-        const swarmId = await this.getSwarmId(payload.endpoint);
         const {data}: { data: PortainerStack } = await this.client.post(
             '/stacks',
             {
                 name: payload.name,
-                stackFileContent: payload.file,
-                swarmID: swarmId
+                stackFileContent: payload.file
             },
             {
                 params: {
                     endpointId: payload.endpoint,
                     method: 'string',
-                    type: 1
+                    type: 2
                 }
             });
 

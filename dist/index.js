@@ -134,7 +134,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
+exports.getState = exports.saveState = exports.group = exports.endGroup = exports.startGroup = exports.info = exports.notice = exports.warning = exports.error = exports.debug = exports.isDebug = exports.setFailed = exports.setCommandEcho = exports.setOutput = exports.getBooleanInput = exports.getMultilineInput = exports.getInput = exports.addPath = exports.setSecret = exports.exportVariable = exports.ExitCode = void 0;
 const command_1 = __nccwpck_require__(351);
 const file_command_1 = __nccwpck_require__(717);
 const utils_1 = __nccwpck_require__(278);
@@ -312,19 +312,30 @@ exports.debug = debug;
 /**
  * Adds an error issue
  * @param message error issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
  */
-function error(message) {
-    command_1.issue('error', message instanceof Error ? message.toString() : message);
+function error(message, properties = {}) {
+    command_1.issueCommand('error', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 exports.error = error;
 /**
- * Adds an warning issue
+ * Adds a warning issue
  * @param message warning issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
  */
-function warning(message) {
-    command_1.issue('warning', message instanceof Error ? message.toString() : message);
+function warning(message, properties = {}) {
+    command_1.issueCommand('warning', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 exports.warning = warning;
+/**
+ * Adds a notice issue
+ * @param message notice issue message. Errors will be converted to string via toString()
+ * @param properties optional properties to add to the annotation.
+ */
+function notice(message, properties = {}) {
+    command_1.issueCommand('notice', utils_1.toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+exports.notice = notice;
 /**
  * Writes info to log with console.log.
  * @param message info message
@@ -458,7 +469,7 @@ exports.issueCommand = issueCommand;
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.toCommandValue = void 0;
+exports.toCommandProperties = exports.toCommandValue = void 0;
 /**
  * Sanitizes an input into a string so it can be passed into issueCommand safely
  * @param input input to sanitize into a string
@@ -473,6 +484,25 @@ function toCommandValue(input) {
     return JSON.stringify(input);
 }
 exports.toCommandValue = toCommandValue;
+/**
+ *
+ * @param annotationProperties
+ * @returns The command properties to send with the actual annotation command
+ * See IssueCommandProperties: https://github.com/actions/runner/blob/main/src/Runner.Worker/ActionCommandManager.cs#L646
+ */
+function toCommandProperties(annotationProperties) {
+    if (!Object.keys(annotationProperties).length) {
+        return {};
+    }
+    return {
+        title: annotationProperties.title,
+        line: annotationProperties.startLine,
+        endLine: annotationProperties.endLine,
+        col: annotationProperties.startColumn,
+        endColumn: annotationProperties.endColumn
+    };
+}
+exports.toCommandProperties = toCommandProperties;
 //# sourceMappingURL=utils.js.map
 
 /***/ }),
@@ -544,9 +574,16 @@ module.exports = function httpAdapter(config) {
     var headers = config.headers;
 
     // Set User-Agent (required by some servers)
-    // Only set header if it hasn't been set in config
     // See https://github.com/axios/axios/issues/69
-    if (!headers['User-Agent'] && !headers['user-agent']) {
+    if ('User-Agent' in headers || 'user-agent' in headers) {
+      // User-Agent is specified; handle case where no UA header is desired
+      if (!headers['User-Agent'] && !headers['user-agent']) {
+        delete headers['User-Agent'];
+        delete headers['user-agent'];
+      }
+      // Otherwise, use specified value
+    } else {
+      // Only set header if it hasn't been set in config
       headers['User-Agent'] = 'axios/' + pkg.version;
     }
 
@@ -721,11 +758,13 @@ module.exports = function httpAdapter(config) {
         settle(resolve, reject, response);
       } else {
         var responseBuffer = [];
+        var totalResponseBytes = 0;
         stream.on('data', function handleStreamData(chunk) {
           responseBuffer.push(chunk);
+          totalResponseBytes += chunk.length;
 
           // make sure the content length is not over the maxContentLength if specified
-          if (config.maxContentLength > -1 && Buffer.concat(responseBuffer).length > config.maxContentLength) {
+          if (config.maxContentLength > -1 && totalResponseBytes > config.maxContentLength) {
             stream.destroy();
             reject(createError('maxContentLength size of ' + config.maxContentLength + ' exceeded',
               config, null, lastRequest));
@@ -760,14 +799,33 @@ module.exports = function httpAdapter(config) {
 
     // Handle request timeout
     if (config.timeout) {
+      // This is forcing a int timeout to avoid problems if the `req` interface doesn't handle other types.
+      var timeout = parseInt(config.timeout, 10);
+
+      if (isNaN(timeout)) {
+        reject(createError(
+          'error trying to parse `config.timeout` to int',
+          config,
+          'ERR_PARSE_TIMEOUT',
+          req
+        ));
+
+        return;
+      }
+
       // Sometime, the response will be very slow, and does not respond, the connect event will be block by event loop system.
       // And timer callback will be fired, and abort() will be invoked before connection, then get "socket hang up" and code ECONNRESET.
       // At this time, if we have a large number of request, nodejs will hang up some socket on background. and the number will up and up.
       // And then these socket which be hang up will devoring CPU little by little.
       // ClientRequest.setTimeout will be fired on the specify milliseconds, and can make sure that abort() will be fired after connect.
-      req.setTimeout(config.timeout, function handleRequestTimeout() {
+      req.setTimeout(timeout, function handleRequestTimeout() {
         req.abort();
-        reject(createError('timeout of ' + config.timeout + 'ms exceeded', config, 'ECONNABORTED', req));
+        reject(createError(
+          'timeout of ' + timeout + 'ms exceeded',
+          config,
+          config.transitional && config.transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
+          req
+        ));
       });
     }
 
@@ -814,6 +872,7 @@ module.exports = function xhrAdapter(config) {
   return new Promise(function dispatchXhrRequest(resolve, reject) {
     var requestData = config.data;
     var requestHeaders = config.headers;
+    var responseType = config.responseType;
 
     if (utils.isFormData(requestData)) {
       delete requestHeaders['Content-Type']; // Let the browser set it
@@ -834,23 +893,14 @@ module.exports = function xhrAdapter(config) {
     // Set the request timeout in MS
     request.timeout = config.timeout;
 
-    // Listen for ready state
-    request.onreadystatechange = function handleLoad() {
-      if (!request || request.readyState !== 4) {
+    function onloadend() {
+      if (!request) {
         return;
       }
-
-      // The request errored out and we didn't get a response, this will be
-      // handled by onerror instead
-      // With one exception: request that using file: protocol, most browsers
-      // will return status as 0 even though it's a successful request
-      if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
-        return;
-      }
-
       // Prepare the response
       var responseHeaders = 'getAllResponseHeaders' in request ? parseHeaders(request.getAllResponseHeaders()) : null;
-      var responseData = !config.responseType || config.responseType === 'text' ? request.responseText : request.response;
+      var responseData = !responseType || responseType === 'text' ||  responseType === 'json' ?
+        request.responseText : request.response;
       var response = {
         data: responseData,
         status: request.status,
@@ -864,7 +914,30 @@ module.exports = function xhrAdapter(config) {
 
       // Clean up request
       request = null;
-    };
+    }
+
+    if ('onloadend' in request) {
+      // Use onloadend if available
+      request.onloadend = onloadend;
+    } else {
+      // Listen for ready state to emulate onloadend
+      request.onreadystatechange = function handleLoad() {
+        if (!request || request.readyState !== 4) {
+          return;
+        }
+
+        // The request errored out and we didn't get a response, this will be
+        // handled by onerror instead
+        // With one exception: request that using file: protocol, most browsers
+        // will return status as 0 even though it's a successful request
+        if (request.status === 0 && !(request.responseURL && request.responseURL.indexOf('file:') === 0)) {
+          return;
+        }
+        // readystate handler is calling before onerror or ontimeout handlers,
+        // so we should call onloadend on the next 'tick'
+        setTimeout(onloadend);
+      };
+    }
 
     // Handle browser request cancellation (as opposed to a manual cancellation)
     request.onabort = function handleAbort() {
@@ -894,7 +967,10 @@ module.exports = function xhrAdapter(config) {
       if (config.timeoutErrorMessage) {
         timeoutErrorMessage = config.timeoutErrorMessage;
       }
-      reject(createError(timeoutErrorMessage, config, 'ECONNABORTED',
+      reject(createError(
+        timeoutErrorMessage,
+        config,
+        config.transitional && config.transitional.clarifyTimeoutError ? 'ETIMEDOUT' : 'ECONNABORTED',
         request));
 
       // Clean up request
@@ -934,16 +1010,8 @@ module.exports = function xhrAdapter(config) {
     }
 
     // Add responseType to request if needed
-    if (config.responseType) {
-      try {
-        request.responseType = config.responseType;
-      } catch (e) {
-        // Expected DOMException thrown by browsers not compatible XMLHttpRequest Level 2.
-        // But, this can be suppressed for 'json' type as it can be parsed by default 'transformResponse' function.
-        if (config.responseType !== 'json') {
-          throw e;
-        }
-      }
+    if (responseType && responseType !== 'json') {
+      request.responseType = config.responseType;
     }
 
     // Handle progress if needed
@@ -1162,7 +1230,9 @@ var buildURL = __nccwpck_require__(646);
 var InterceptorManager = __nccwpck_require__(214);
 var dispatchRequest = __nccwpck_require__(62);
 var mergeConfig = __nccwpck_require__(831);
+var validator = __nccwpck_require__(632);
 
+var validators = validator.validators;
 /**
  * Create a new instance of Axios
  *
@@ -1202,20 +1272,71 @@ Axios.prototype.request = function request(config) {
     config.method = 'get';
   }
 
-  // Hook up interceptors middleware
-  var chain = [dispatchRequest, undefined];
-  var promise = Promise.resolve(config);
+  var transitional = config.transitional;
 
+  if (transitional !== undefined) {
+    validator.assertOptions(transitional, {
+      silentJSONParsing: validators.transitional(validators.boolean, '1.0.0'),
+      forcedJSONParsing: validators.transitional(validators.boolean, '1.0.0'),
+      clarifyTimeoutError: validators.transitional(validators.boolean, '1.0.0')
+    }, false);
+  }
+
+  // filter out skipped interceptors
+  var requestInterceptorChain = [];
+  var synchronousRequestInterceptors = true;
   this.interceptors.request.forEach(function unshiftRequestInterceptors(interceptor) {
-    chain.unshift(interceptor.fulfilled, interceptor.rejected);
+    if (typeof interceptor.runWhen === 'function' && interceptor.runWhen(config) === false) {
+      return;
+    }
+
+    synchronousRequestInterceptors = synchronousRequestInterceptors && interceptor.synchronous;
+
+    requestInterceptorChain.unshift(interceptor.fulfilled, interceptor.rejected);
   });
 
+  var responseInterceptorChain = [];
   this.interceptors.response.forEach(function pushResponseInterceptors(interceptor) {
-    chain.push(interceptor.fulfilled, interceptor.rejected);
+    responseInterceptorChain.push(interceptor.fulfilled, interceptor.rejected);
   });
 
-  while (chain.length) {
-    promise = promise.then(chain.shift(), chain.shift());
+  var promise;
+
+  if (!synchronousRequestInterceptors) {
+    var chain = [dispatchRequest, undefined];
+
+    Array.prototype.unshift.apply(chain, requestInterceptorChain);
+    chain = chain.concat(responseInterceptorChain);
+
+    promise = Promise.resolve(config);
+    while (chain.length) {
+      promise = promise.then(chain.shift(), chain.shift());
+    }
+
+    return promise;
+  }
+
+
+  var newConfig = config;
+  while (requestInterceptorChain.length) {
+    var onFulfilled = requestInterceptorChain.shift();
+    var onRejected = requestInterceptorChain.shift();
+    try {
+      newConfig = onFulfilled(newConfig);
+    } catch (error) {
+      onRejected(error);
+      break;
+    }
+  }
+
+  try {
+    promise = dispatchRequest(newConfig);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
+  while (responseInterceptorChain.length) {
+    promise = promise.then(responseInterceptorChain.shift(), responseInterceptorChain.shift());
   }
 
   return promise;
@@ -1274,10 +1395,12 @@ function InterceptorManager() {
  *
  * @return {Number} An ID used to remove interceptor later
  */
-InterceptorManager.prototype.use = function use(fulfilled, rejected) {
+InterceptorManager.prototype.use = function use(fulfilled, rejected, options) {
   this.handlers.push({
     fulfilled: fulfilled,
-    rejected: rejected
+    rejected: rejected,
+    synchronous: options ? options.synchronous : false,
+    runWhen: options ? options.runWhen : null
   });
   return this.handlers.length - 1;
 };
@@ -1401,7 +1524,8 @@ module.exports = function dispatchRequest(config) {
   config.headers = config.headers || {};
 
   // Transform request data
-  config.data = transformData(
+  config.data = transformData.call(
+    config,
     config.data,
     config.headers,
     config.transformRequest
@@ -1427,7 +1551,8 @@ module.exports = function dispatchRequest(config) {
     throwIfCancellationRequested(config);
 
     // Transform response data
-    response.data = transformData(
+    response.data = transformData.call(
+      config,
       response.data,
       response.headers,
       config.transformResponse
@@ -1440,7 +1565,8 @@ module.exports = function dispatchRequest(config) {
 
       // Transform response data
       if (reason && reason.response) {
-        reason.response.data = transformData(
+        reason.response.data = transformData.call(
+          config,
           reason.response.data,
           reason.response.headers,
           config.transformResponse
@@ -1640,6 +1766,7 @@ module.exports = function settle(resolve, reject, response) {
 
 
 var utils = __nccwpck_require__(328);
+var defaults = __nccwpck_require__(190);
 
 /**
  * Transform the data for a request or a response
@@ -1650,9 +1777,10 @@ var utils = __nccwpck_require__(328);
  * @returns {*} The resulting transformed data
  */
 module.exports = function transformData(data, headers, fns) {
+  var context = this || defaults;
   /*eslint no-param-reassign:0*/
   utils.forEach(fns, function transform(fn) {
-    data = fn(data, headers);
+    data = fn.call(context, data, headers);
   });
 
   return data;
@@ -1669,6 +1797,7 @@ module.exports = function transformData(data, headers, fns) {
 
 var utils = __nccwpck_require__(328);
 var normalizeHeaderName = __nccwpck_require__(240);
+var enhanceError = __nccwpck_require__(516);
 
 var DEFAULT_CONTENT_TYPE = {
   'Content-Type': 'application/x-www-form-urlencoded'
@@ -1692,12 +1821,35 @@ function getDefaultAdapter() {
   return adapter;
 }
 
+function stringifySafely(rawValue, parser, encoder) {
+  if (utils.isString(rawValue)) {
+    try {
+      (parser || JSON.parse)(rawValue);
+      return utils.trim(rawValue);
+    } catch (e) {
+      if (e.name !== 'SyntaxError') {
+        throw e;
+      }
+    }
+  }
+
+  return (encoder || JSON.stringify)(rawValue);
+}
+
 var defaults = {
+
+  transitional: {
+    silentJSONParsing: true,
+    forcedJSONParsing: true,
+    clarifyTimeoutError: false
+  },
+
   adapter: getDefaultAdapter(),
 
   transformRequest: [function transformRequest(data, headers) {
     normalizeHeaderName(headers, 'Accept');
     normalizeHeaderName(headers, 'Content-Type');
+
     if (utils.isFormData(data) ||
       utils.isArrayBuffer(data) ||
       utils.isBuffer(data) ||
@@ -1714,20 +1866,32 @@ var defaults = {
       setContentTypeIfUnset(headers, 'application/x-www-form-urlencoded;charset=utf-8');
       return data.toString();
     }
-    if (utils.isObject(data)) {
-      setContentTypeIfUnset(headers, 'application/json;charset=utf-8');
-      return JSON.stringify(data);
+    if (utils.isObject(data) || (headers && headers['Content-Type'] === 'application/json')) {
+      setContentTypeIfUnset(headers, 'application/json');
+      return stringifySafely(data);
     }
     return data;
   }],
 
   transformResponse: [function transformResponse(data) {
-    /*eslint no-param-reassign:0*/
-    if (typeof data === 'string') {
+    var transitional = this.transitional;
+    var silentJSONParsing = transitional && transitional.silentJSONParsing;
+    var forcedJSONParsing = transitional && transitional.forcedJSONParsing;
+    var strictJSONParsing = !silentJSONParsing && this.responseType === 'json';
+
+    if (strictJSONParsing || (forcedJSONParsing && utils.isString(data) && data.length)) {
       try {
-        data = JSON.parse(data);
-      } catch (e) { /* Ignore */ }
+        return JSON.parse(data);
+      } catch (e) {
+        if (strictJSONParsing) {
+          if (e.name === 'SyntaxError') {
+            throw enhanceError(e, this, 'E_JSON_PARSE');
+          }
+          throw e;
+        }
+      }
     }
+
     return data;
   }],
 
@@ -2180,6 +2344,119 @@ module.exports = function spread(callback) {
 
 /***/ }),
 
+/***/ 632:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var pkg = __nccwpck_require__(696);
+
+var validators = {};
+
+// eslint-disable-next-line func-names
+['object', 'boolean', 'number', 'function', 'string', 'symbol'].forEach(function(type, i) {
+  validators[type] = function validator(thing) {
+    return typeof thing === type || 'a' + (i < 1 ? 'n ' : ' ') + type;
+  };
+});
+
+var deprecatedWarnings = {};
+var currentVerArr = pkg.version.split('.');
+
+/**
+ * Compare package versions
+ * @param {string} version
+ * @param {string?} thanVersion
+ * @returns {boolean}
+ */
+function isOlderVersion(version, thanVersion) {
+  var pkgVersionArr = thanVersion ? thanVersion.split('.') : currentVerArr;
+  var destVer = version.split('.');
+  for (var i = 0; i < 3; i++) {
+    if (pkgVersionArr[i] > destVer[i]) {
+      return true;
+    } else if (pkgVersionArr[i] < destVer[i]) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Transitional option validator
+ * @param {function|boolean?} validator
+ * @param {string?} version
+ * @param {string} message
+ * @returns {function}
+ */
+validators.transitional = function transitional(validator, version, message) {
+  var isDeprecated = version && isOlderVersion(version);
+
+  function formatMessage(opt, desc) {
+    return '[Axios v' + pkg.version + '] Transitional option \'' + opt + '\'' + desc + (message ? '. ' + message : '');
+  }
+
+  // eslint-disable-next-line func-names
+  return function(value, opt, opts) {
+    if (validator === false) {
+      throw new Error(formatMessage(opt, ' has been removed in ' + version));
+    }
+
+    if (isDeprecated && !deprecatedWarnings[opt]) {
+      deprecatedWarnings[opt] = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        formatMessage(
+          opt,
+          ' has been deprecated since v' + version + ' and will be removed in the near future'
+        )
+      );
+    }
+
+    return validator ? validator(value, opt, opts) : true;
+  };
+};
+
+/**
+ * Assert object's properties type
+ * @param {object} options
+ * @param {object} schema
+ * @param {boolean?} allowUnknown
+ */
+
+function assertOptions(options, schema, allowUnknown) {
+  if (typeof options !== 'object') {
+    throw new TypeError('options must be an object');
+  }
+  var keys = Object.keys(options);
+  var i = keys.length;
+  while (i-- > 0) {
+    var opt = keys[i];
+    var validator = schema[opt];
+    if (validator) {
+      var value = options[opt];
+      var result = value === undefined || validator(value, opt, options);
+      if (result !== true) {
+        throw new TypeError('option ' + opt + ' must be ' + result);
+      }
+      continue;
+    }
+    if (allowUnknown !== true) {
+      throw Error('Unknown option ' + opt);
+    }
+  }
+}
+
+module.exports = {
+  isOlderVersion: isOlderVersion,
+  assertOptions: assertOptions,
+  validators: validators
+};
+
+
+/***/ }),
+
 /***/ 328:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -2187,8 +2464,6 @@ module.exports = function spread(callback) {
 
 
 var bind = __nccwpck_require__(65);
-
-/*global toString:true*/
 
 // utils is a library of generic helper functions non-specific to axios
 
@@ -2373,7 +2648,7 @@ function isURLSearchParams(val) {
  * @returns {String} The String freed of excess whitespace
  */
 function trim(str) {
-  return str.replace(/^\s*/, '').replace(/\s*$/, '');
+  return str.trim ? str.trim() : str.replace(/^\s+|\s+$/g, '');
 }
 
 /**
@@ -2713,10 +2988,8 @@ RedirectableRequest.prototype.removeHeader = function (name) {
 // Global timeout for all underlying requests
 RedirectableRequest.prototype.setTimeout = function (msecs, callback) {
   var self = this;
-  if (callback) {
-    this.on("timeout", callback);
-  }
 
+  // Destroys the socket on timeout
   function destroyOnTimeout(socket) {
     socket.setTimeout(msecs);
     socket.removeListener("timeout", socket.destroy);
@@ -2735,18 +3008,26 @@ RedirectableRequest.prototype.setTimeout = function (msecs, callback) {
     destroyOnTimeout(socket);
   }
 
-  // Prevent a timeout from triggering
+  // Stops a timeout from triggering
   function clearTimer() {
-    clearTimeout(this._timeout);
+    if (self._timeout) {
+      clearTimeout(self._timeout);
+      self._timeout = null;
+    }
     if (callback) {
       self.removeListener("timeout", callback);
     }
-    if (!this.socket) {
+    if (!self.socket) {
       self._currentRequest.removeListener("socket", startTimer);
     }
   }
 
-  // Start the timer when the socket is opened
+  // Attach callback if passed
+  if (callback) {
+    this.on("timeout", callback);
+  }
+
+  // Start the timer if or when the socket is opened
   if (this.socket) {
     startTimer(this.socket);
   }
@@ -2754,6 +3035,7 @@ RedirectableRequest.prototype.setTimeout = function (msecs, callback) {
     this._currentRequest.once("socket", startTimer);
   }
 
+  // Clean up on events
   this.on("socket", destroyOnTimeout);
   this.once("response", clearTimer);
   this.once("error", clearTimer);
@@ -3099,6 +3381,1100 @@ module.exports.wrap = wrap;
 
 /***/ }),
 
+/***/ 272:
+/***/ (function(module) {
+
+(function (global, factory) {
+   true ? module.exports = factory() :
+  0;
+}(this, (function () { 'use strict';
+
+  /*!
+   * mustache.js - Logic-less {{mustache}} templates with JavaScript
+   * http://github.com/janl/mustache.js
+   */
+
+  var objectToString = Object.prototype.toString;
+  var isArray = Array.isArray || function isArrayPolyfill (object) {
+    return objectToString.call(object) === '[object Array]';
+  };
+
+  function isFunction (object) {
+    return typeof object === 'function';
+  }
+
+  /**
+   * More correct typeof string handling array
+   * which normally returns typeof 'object'
+   */
+  function typeStr (obj) {
+    return isArray(obj) ? 'array' : typeof obj;
+  }
+
+  function escapeRegExp (string) {
+    return string.replace(/[\-\[\]{}()*+?.,\\\^$|#\s]/g, '\\$&');
+  }
+
+  /**
+   * Null safe way of checking whether or not an object,
+   * including its prototype, has a given property
+   */
+  function hasProperty (obj, propName) {
+    return obj != null && typeof obj === 'object' && (propName in obj);
+  }
+
+  /**
+   * Safe way of detecting whether or not the given thing is a primitive and
+   * whether it has the given property
+   */
+  function primitiveHasOwnProperty (primitive, propName) {
+    return (
+      primitive != null
+      && typeof primitive !== 'object'
+      && primitive.hasOwnProperty
+      && primitive.hasOwnProperty(propName)
+    );
+  }
+
+  // Workaround for https://issues.apache.org/jira/browse/COUCHDB-577
+  // See https://github.com/janl/mustache.js/issues/189
+  var regExpTest = RegExp.prototype.test;
+  function testRegExp (re, string) {
+    return regExpTest.call(re, string);
+  }
+
+  var nonSpaceRe = /\S/;
+  function isWhitespace (string) {
+    return !testRegExp(nonSpaceRe, string);
+  }
+
+  var entityMap = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '/': '&#x2F;',
+    '`': '&#x60;',
+    '=': '&#x3D;'
+  };
+
+  function escapeHtml (string) {
+    return String(string).replace(/[&<>"'`=\/]/g, function fromEntityMap (s) {
+      return entityMap[s];
+    });
+  }
+
+  var whiteRe = /\s*/;
+  var spaceRe = /\s+/;
+  var equalsRe = /\s*=/;
+  var curlyRe = /\s*\}/;
+  var tagRe = /#|\^|\/|>|\{|&|=|!/;
+
+  /**
+   * Breaks up the given `template` string into a tree of tokens. If the `tags`
+   * argument is given here it must be an array with two string values: the
+   * opening and closing tags used in the template (e.g. [ "<%", "%>" ]). Of
+   * course, the default is to use mustaches (i.e. mustache.tags).
+   *
+   * A token is an array with at least 4 elements. The first element is the
+   * mustache symbol that was used inside the tag, e.g. "#" or "&". If the tag
+   * did not contain a symbol (i.e. {{myValue}}) this element is "name". For
+   * all text that appears outside a symbol this element is "text".
+   *
+   * The second element of a token is its "value". For mustache tags this is
+   * whatever else was inside the tag besides the opening symbol. For text tokens
+   * this is the text itself.
+   *
+   * The third and fourth elements of the token are the start and end indices,
+   * respectively, of the token in the original template.
+   *
+   * Tokens that are the root node of a subtree contain two more elements: 1) an
+   * array of tokens in the subtree and 2) the index in the original template at
+   * which the closing tag for that section begins.
+   *
+   * Tokens for partials also contain two more elements: 1) a string value of
+   * indendation prior to that tag and 2) the index of that tag on that line -
+   * eg a value of 2 indicates the partial is the third tag on this line.
+   */
+  function parseTemplate (template, tags) {
+    if (!template)
+      return [];
+    var lineHasNonSpace = false;
+    var sections = [];     // Stack to hold section tokens
+    var tokens = [];       // Buffer to hold the tokens
+    var spaces = [];       // Indices of whitespace tokens on the current line
+    var hasTag = false;    // Is there a {{tag}} on the current line?
+    var nonSpace = false;  // Is there a non-space char on the current line?
+    var indentation = '';  // Tracks indentation for tags that use it
+    var tagIndex = 0;      // Stores a count of number of tags encountered on a line
+
+    // Strips all whitespace tokens array for the current line
+    // if there was a {{#tag}} on it and otherwise only space.
+    function stripSpace () {
+      if (hasTag && !nonSpace) {
+        while (spaces.length)
+          delete tokens[spaces.pop()];
+      } else {
+        spaces = [];
+      }
+
+      hasTag = false;
+      nonSpace = false;
+    }
+
+    var openingTagRe, closingTagRe, closingCurlyRe;
+    function compileTags (tagsToCompile) {
+      if (typeof tagsToCompile === 'string')
+        tagsToCompile = tagsToCompile.split(spaceRe, 2);
+
+      if (!isArray(tagsToCompile) || tagsToCompile.length !== 2)
+        throw new Error('Invalid tags: ' + tagsToCompile);
+
+      openingTagRe = new RegExp(escapeRegExp(tagsToCompile[0]) + '\\s*');
+      closingTagRe = new RegExp('\\s*' + escapeRegExp(tagsToCompile[1]));
+      closingCurlyRe = new RegExp('\\s*' + escapeRegExp('}' + tagsToCompile[1]));
+    }
+
+    compileTags(tags || mustache.tags);
+
+    var scanner = new Scanner(template);
+
+    var start, type, value, chr, token, openSection;
+    while (!scanner.eos()) {
+      start = scanner.pos;
+
+      // Match any text between tags.
+      value = scanner.scanUntil(openingTagRe);
+
+      if (value) {
+        for (var i = 0, valueLength = value.length; i < valueLength; ++i) {
+          chr = value.charAt(i);
+
+          if (isWhitespace(chr)) {
+            spaces.push(tokens.length);
+            indentation += chr;
+          } else {
+            nonSpace = true;
+            lineHasNonSpace = true;
+            indentation += ' ';
+          }
+
+          tokens.push([ 'text', chr, start, start + 1 ]);
+          start += 1;
+
+          // Check for whitespace on the current line.
+          if (chr === '\n') {
+            stripSpace();
+            indentation = '';
+            tagIndex = 0;
+            lineHasNonSpace = false;
+          }
+        }
+      }
+
+      // Match the opening tag.
+      if (!scanner.scan(openingTagRe))
+        break;
+
+      hasTag = true;
+
+      // Get the tag type.
+      type = scanner.scan(tagRe) || 'name';
+      scanner.scan(whiteRe);
+
+      // Get the tag value.
+      if (type === '=') {
+        value = scanner.scanUntil(equalsRe);
+        scanner.scan(equalsRe);
+        scanner.scanUntil(closingTagRe);
+      } else if (type === '{') {
+        value = scanner.scanUntil(closingCurlyRe);
+        scanner.scan(curlyRe);
+        scanner.scanUntil(closingTagRe);
+        type = '&';
+      } else {
+        value = scanner.scanUntil(closingTagRe);
+      }
+
+      // Match the closing tag.
+      if (!scanner.scan(closingTagRe))
+        throw new Error('Unclosed tag at ' + scanner.pos);
+
+      if (type == '>') {
+        token = [ type, value, start, scanner.pos, indentation, tagIndex, lineHasNonSpace ];
+      } else {
+        token = [ type, value, start, scanner.pos ];
+      }
+      tagIndex++;
+      tokens.push(token);
+
+      if (type === '#' || type === '^') {
+        sections.push(token);
+      } else if (type === '/') {
+        // Check section nesting.
+        openSection = sections.pop();
+
+        if (!openSection)
+          throw new Error('Unopened section "' + value + '" at ' + start);
+
+        if (openSection[1] !== value)
+          throw new Error('Unclosed section "' + openSection[1] + '" at ' + start);
+      } else if (type === 'name' || type === '{' || type === '&') {
+        nonSpace = true;
+      } else if (type === '=') {
+        // Set the tags for the next time around.
+        compileTags(value);
+      }
+    }
+
+    stripSpace();
+
+    // Make sure there are no open sections when we're done.
+    openSection = sections.pop();
+
+    if (openSection)
+      throw new Error('Unclosed section "' + openSection[1] + '" at ' + scanner.pos);
+
+    return nestTokens(squashTokens(tokens));
+  }
+
+  /**
+   * Combines the values of consecutive text tokens in the given `tokens` array
+   * to a single token.
+   */
+  function squashTokens (tokens) {
+    var squashedTokens = [];
+
+    var token, lastToken;
+    for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
+      token = tokens[i];
+
+      if (token) {
+        if (token[0] === 'text' && lastToken && lastToken[0] === 'text') {
+          lastToken[1] += token[1];
+          lastToken[3] = token[3];
+        } else {
+          squashedTokens.push(token);
+          lastToken = token;
+        }
+      }
+    }
+
+    return squashedTokens;
+  }
+
+  /**
+   * Forms the given array of `tokens` into a nested tree structure where
+   * tokens that represent a section have two additional items: 1) an array of
+   * all tokens that appear in that section and 2) the index in the original
+   * template that represents the end of that section.
+   */
+  function nestTokens (tokens) {
+    var nestedTokens = [];
+    var collector = nestedTokens;
+    var sections = [];
+
+    var token, section;
+    for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
+      token = tokens[i];
+
+      switch (token[0]) {
+        case '#':
+        case '^':
+          collector.push(token);
+          sections.push(token);
+          collector = token[4] = [];
+          break;
+        case '/':
+          section = sections.pop();
+          section[5] = token[2];
+          collector = sections.length > 0 ? sections[sections.length - 1][4] : nestedTokens;
+          break;
+        default:
+          collector.push(token);
+      }
+    }
+
+    return nestedTokens;
+  }
+
+  /**
+   * A simple string scanner that is used by the template parser to find
+   * tokens in template strings.
+   */
+  function Scanner (string) {
+    this.string = string;
+    this.tail = string;
+    this.pos = 0;
+  }
+
+  /**
+   * Returns `true` if the tail is empty (end of string).
+   */
+  Scanner.prototype.eos = function eos () {
+    return this.tail === '';
+  };
+
+  /**
+   * Tries to match the given regular expression at the current position.
+   * Returns the matched text if it can match, the empty string otherwise.
+   */
+  Scanner.prototype.scan = function scan (re) {
+    var match = this.tail.match(re);
+
+    if (!match || match.index !== 0)
+      return '';
+
+    var string = match[0];
+
+    this.tail = this.tail.substring(string.length);
+    this.pos += string.length;
+
+    return string;
+  };
+
+  /**
+   * Skips all text until the given regular expression can be matched. Returns
+   * the skipped string, which is the entire tail if no match can be made.
+   */
+  Scanner.prototype.scanUntil = function scanUntil (re) {
+    var index = this.tail.search(re), match;
+
+    switch (index) {
+      case -1:
+        match = this.tail;
+        this.tail = '';
+        break;
+      case 0:
+        match = '';
+        break;
+      default:
+        match = this.tail.substring(0, index);
+        this.tail = this.tail.substring(index);
+    }
+
+    this.pos += match.length;
+
+    return match;
+  };
+
+  /**
+   * Represents a rendering context by wrapping a view object and
+   * maintaining a reference to the parent context.
+   */
+  function Context (view, parentContext) {
+    this.view = view;
+    this.cache = { '.': this.view };
+    this.parent = parentContext;
+  }
+
+  /**
+   * Creates a new context using the given view with this context
+   * as the parent.
+   */
+  Context.prototype.push = function push (view) {
+    return new Context(view, this);
+  };
+
+  /**
+   * Returns the value of the given name in this context, traversing
+   * up the context hierarchy if the value is absent in this context's view.
+   */
+  Context.prototype.lookup = function lookup (name) {
+    var cache = this.cache;
+
+    var value;
+    if (cache.hasOwnProperty(name)) {
+      value = cache[name];
+    } else {
+      var context = this, intermediateValue, names, index, lookupHit = false;
+
+      while (context) {
+        if (name.indexOf('.') > 0) {
+          intermediateValue = context.view;
+          names = name.split('.');
+          index = 0;
+
+          /**
+           * Using the dot notion path in `name`, we descend through the
+           * nested objects.
+           *
+           * To be certain that the lookup has been successful, we have to
+           * check if the last object in the path actually has the property
+           * we are looking for. We store the result in `lookupHit`.
+           *
+           * This is specially necessary for when the value has been set to
+           * `undefined` and we want to avoid looking up parent contexts.
+           *
+           * In the case where dot notation is used, we consider the lookup
+           * to be successful even if the last "object" in the path is
+           * not actually an object but a primitive (e.g., a string, or an
+           * integer), because it is sometimes useful to access a property
+           * of an autoboxed primitive, such as the length of a string.
+           **/
+          while (intermediateValue != null && index < names.length) {
+            if (index === names.length - 1)
+              lookupHit = (
+                hasProperty(intermediateValue, names[index])
+                || primitiveHasOwnProperty(intermediateValue, names[index])
+              );
+
+            intermediateValue = intermediateValue[names[index++]];
+          }
+        } else {
+          intermediateValue = context.view[name];
+
+          /**
+           * Only checking against `hasProperty`, which always returns `false` if
+           * `context.view` is not an object. Deliberately omitting the check
+           * against `primitiveHasOwnProperty` if dot notation is not used.
+           *
+           * Consider this example:
+           * ```
+           * Mustache.render("The length of a football field is {{#length}}{{length}}{{/length}}.", {length: "100 yards"})
+           * ```
+           *
+           * If we were to check also against `primitiveHasOwnProperty`, as we do
+           * in the dot notation case, then render call would return:
+           *
+           * "The length of a football field is 9."
+           *
+           * rather than the expected:
+           *
+           * "The length of a football field is 100 yards."
+           **/
+          lookupHit = hasProperty(context.view, name);
+        }
+
+        if (lookupHit) {
+          value = intermediateValue;
+          break;
+        }
+
+        context = context.parent;
+      }
+
+      cache[name] = value;
+    }
+
+    if (isFunction(value))
+      value = value.call(this.view);
+
+    return value;
+  };
+
+  /**
+   * A Writer knows how to take a stream of tokens and render them to a
+   * string, given a context. It also maintains a cache of templates to
+   * avoid the need to parse the same template twice.
+   */
+  function Writer () {
+    this.templateCache = {
+      _cache: {},
+      set: function set (key, value) {
+        this._cache[key] = value;
+      },
+      get: function get (key) {
+        return this._cache[key];
+      },
+      clear: function clear () {
+        this._cache = {};
+      }
+    };
+  }
+
+  /**
+   * Clears all cached templates in this writer.
+   */
+  Writer.prototype.clearCache = function clearCache () {
+    if (typeof this.templateCache !== 'undefined') {
+      this.templateCache.clear();
+    }
+  };
+
+  /**
+   * Parses and caches the given `template` according to the given `tags` or
+   * `mustache.tags` if `tags` is omitted,  and returns the array of tokens
+   * that is generated from the parse.
+   */
+  Writer.prototype.parse = function parse (template, tags) {
+    var cache = this.templateCache;
+    var cacheKey = template + ':' + (tags || mustache.tags).join(':');
+    var isCacheEnabled = typeof cache !== 'undefined';
+    var tokens = isCacheEnabled ? cache.get(cacheKey) : undefined;
+
+    if (tokens == undefined) {
+      tokens = parseTemplate(template, tags);
+      isCacheEnabled && cache.set(cacheKey, tokens);
+    }
+    return tokens;
+  };
+
+  /**
+   * High-level method that is used to render the given `template` with
+   * the given `view`.
+   *
+   * The optional `partials` argument may be an object that contains the
+   * names and templates of partials that are used in the template. It may
+   * also be a function that is used to load partial templates on the fly
+   * that takes a single argument: the name of the partial.
+   *
+   * If the optional `config` argument is given here, then it should be an
+   * object with a `tags` attribute or an `escape` attribute or both.
+   * If an array is passed, then it will be interpreted the same way as
+   * a `tags` attribute on a `config` object.
+   *
+   * The `tags` attribute of a `config` object must be an array with two
+   * string values: the opening and closing tags used in the template (e.g.
+   * [ "<%", "%>" ]). The default is to mustache.tags.
+   *
+   * The `escape` attribute of a `config` object must be a function which
+   * accepts a string as input and outputs a safely escaped string.
+   * If an `escape` function is not provided, then an HTML-safe string
+   * escaping function is used as the default.
+   */
+  Writer.prototype.render = function render (template, view, partials, config) {
+    var tags = this.getConfigTags(config);
+    var tokens = this.parse(template, tags);
+    var context = (view instanceof Context) ? view : new Context(view, undefined);
+    return this.renderTokens(tokens, context, partials, template, config);
+  };
+
+  /**
+   * Low-level method that renders the given array of `tokens` using
+   * the given `context` and `partials`.
+   *
+   * Note: The `originalTemplate` is only ever used to extract the portion
+   * of the original template that was contained in a higher-order section.
+   * If the template doesn't use higher-order sections, this argument may
+   * be omitted.
+   */
+  Writer.prototype.renderTokens = function renderTokens (tokens, context, partials, originalTemplate, config) {
+    var buffer = '';
+
+    var token, symbol, value;
+    for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
+      value = undefined;
+      token = tokens[i];
+      symbol = token[0];
+
+      if (symbol === '#') value = this.renderSection(token, context, partials, originalTemplate, config);
+      else if (symbol === '^') value = this.renderInverted(token, context, partials, originalTemplate, config);
+      else if (symbol === '>') value = this.renderPartial(token, context, partials, config);
+      else if (symbol === '&') value = this.unescapedValue(token, context);
+      else if (symbol === 'name') value = this.escapedValue(token, context, config);
+      else if (symbol === 'text') value = this.rawValue(token);
+
+      if (value !== undefined)
+        buffer += value;
+    }
+
+    return buffer;
+  };
+
+  Writer.prototype.renderSection = function renderSection (token, context, partials, originalTemplate, config) {
+    var self = this;
+    var buffer = '';
+    var value = context.lookup(token[1]);
+
+    // This function is used to render an arbitrary template
+    // in the current context by higher-order sections.
+    function subRender (template) {
+      return self.render(template, context, partials, config);
+    }
+
+    if (!value) return;
+
+    if (isArray(value)) {
+      for (var j = 0, valueLength = value.length; j < valueLength; ++j) {
+        buffer += this.renderTokens(token[4], context.push(value[j]), partials, originalTemplate, config);
+      }
+    } else if (typeof value === 'object' || typeof value === 'string' || typeof value === 'number') {
+      buffer += this.renderTokens(token[4], context.push(value), partials, originalTemplate, config);
+    } else if (isFunction(value)) {
+      if (typeof originalTemplate !== 'string')
+        throw new Error('Cannot use higher-order sections without the original template');
+
+      // Extract the portion of the original template that the section contains.
+      value = value.call(context.view, originalTemplate.slice(token[3], token[5]), subRender);
+
+      if (value != null)
+        buffer += value;
+    } else {
+      buffer += this.renderTokens(token[4], context, partials, originalTemplate, config);
+    }
+    return buffer;
+  };
+
+  Writer.prototype.renderInverted = function renderInverted (token, context, partials, originalTemplate, config) {
+    var value = context.lookup(token[1]);
+
+    // Use JavaScript's definition of falsy. Include empty arrays.
+    // See https://github.com/janl/mustache.js/issues/186
+    if (!value || (isArray(value) && value.length === 0))
+      return this.renderTokens(token[4], context, partials, originalTemplate, config);
+  };
+
+  Writer.prototype.indentPartial = function indentPartial (partial, indentation, lineHasNonSpace) {
+    var filteredIndentation = indentation.replace(/[^ \t]/g, '');
+    var partialByNl = partial.split('\n');
+    for (var i = 0; i < partialByNl.length; i++) {
+      if (partialByNl[i].length && (i > 0 || !lineHasNonSpace)) {
+        partialByNl[i] = filteredIndentation + partialByNl[i];
+      }
+    }
+    return partialByNl.join('\n');
+  };
+
+  Writer.prototype.renderPartial = function renderPartial (token, context, partials, config) {
+    if (!partials) return;
+    var tags = this.getConfigTags(config);
+
+    var value = isFunction(partials) ? partials(token[1]) : partials[token[1]];
+    if (value != null) {
+      var lineHasNonSpace = token[6];
+      var tagIndex = token[5];
+      var indentation = token[4];
+      var indentedValue = value;
+      if (tagIndex == 0 && indentation) {
+        indentedValue = this.indentPartial(value, indentation, lineHasNonSpace);
+      }
+      var tokens = this.parse(indentedValue, tags);
+      return this.renderTokens(tokens, context, partials, indentedValue, config);
+    }
+  };
+
+  Writer.prototype.unescapedValue = function unescapedValue (token, context) {
+    var value = context.lookup(token[1]);
+    if (value != null)
+      return value;
+  };
+
+  Writer.prototype.escapedValue = function escapedValue (token, context, config) {
+    var escape = this.getConfigEscape(config) || mustache.escape;
+    var value = context.lookup(token[1]);
+    if (value != null)
+      return (typeof value === 'number' && escape === mustache.escape) ? String(value) : escape(value);
+  };
+
+  Writer.prototype.rawValue = function rawValue (token) {
+    return token[1];
+  };
+
+  Writer.prototype.getConfigTags = function getConfigTags (config) {
+    if (isArray(config)) {
+      return config;
+    }
+    else if (config && typeof config === 'object') {
+      return config.tags;
+    }
+    else {
+      return undefined;
+    }
+  };
+
+  Writer.prototype.getConfigEscape = function getConfigEscape (config) {
+    if (config && typeof config === 'object' && !isArray(config)) {
+      return config.escape;
+    }
+    else {
+      return undefined;
+    }
+  };
+
+  var mustache = {
+    name: 'mustache.js',
+    version: '4.2.0',
+    tags: [ '{{', '}}' ],
+    clearCache: undefined,
+    escape: undefined,
+    parse: undefined,
+    render: undefined,
+    Scanner: undefined,
+    Context: undefined,
+    Writer: undefined,
+    /**
+     * Allows a user to override the default caching strategy, by providing an
+     * object with set, get and clear methods. This can also be used to disable
+     * the cache by setting it to the literal `undefined`.
+     */
+    set templateCache (cache) {
+      defaultWriter.templateCache = cache;
+    },
+    /**
+     * Gets the default or overridden caching object from the default writer.
+     */
+    get templateCache () {
+      return defaultWriter.templateCache;
+    }
+  };
+
+  // All high-level mustache.* functions use this writer.
+  var defaultWriter = new Writer();
+
+  /**
+   * Clears all cached templates in the default writer.
+   */
+  mustache.clearCache = function clearCache () {
+    return defaultWriter.clearCache();
+  };
+
+  /**
+   * Parses and caches the given template in the default writer and returns the
+   * array of tokens it contains. Doing this ahead of time avoids the need to
+   * parse templates on the fly as they are rendered.
+   */
+  mustache.parse = function parse (template, tags) {
+    return defaultWriter.parse(template, tags);
+  };
+
+  /**
+   * Renders the `template` with the given `view`, `partials`, and `config`
+   * using the default writer.
+   */
+  mustache.render = function render (template, view, partials, config) {
+    if (typeof template !== 'string') {
+      throw new TypeError('Invalid template! Template should be a "string" ' +
+                          'but "' + typeStr(template) + '" was given as the first ' +
+                          'argument for mustache#render(template, view, partials)');
+    }
+
+    return defaultWriter.render(template, view, partials, config);
+  };
+
+  // Export the escaping function so that the user may override it.
+  // See https://github.com/janl/mustache.js/issues/244
+  mustache.escape = escapeHtml;
+
+  // Export these mainly for testing, but also for advanced usage.
+  mustache.Scanner = Scanner;
+  mustache.Context = Context;
+  mustache.Writer = Writer;
+
+  return mustache;
+
+})));
+
+
+/***/ }),
+
+/***/ 373:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.parse = void 0;
+const core = __importStar(__nccwpck_require__(186));
+const fs = __importStar(__nccwpck_require__(747));
+const mustache_1 = __importDefault(__nccwpck_require__(272));
+function parsePortainerConfig() {
+    return {
+        url: new URL(core.getInput('portainer-url', { required: true })),
+        username: core.getInput('portainer-username', { required: true }),
+        password: core.getInput('portainer-password', { required: true }),
+        endpoint: parseInt(core.getInput('portainer-endpoint', { required: true }))
+    };
+}
+function parseStackConfig() {
+    const filePath = core.getInput('file', { required: true });
+    let file = fs.readFileSync(filePath, 'utf-8');
+    if (filePath.split('.').pop() === 'mustache') {
+        mustache_1.default.escape = JSON.stringify;
+        file = mustache_1.default.render(file, JSON.parse(core.getInput('variables', { required: false })));
+    }
+    return {
+        name: core.getInput('name', { required: true }),
+        file,
+        delete: !!core.getInput('delete', { required: false }).length,
+        prune: !!core.getInput('prune', { required: false }).length
+    };
+}
+function parse() {
+    return {
+        portainer: parsePortainerConfig(),
+        stack: parseStackConfig()
+    };
+}
+exports.parse = parse;
+
+
+/***/ }),
+
+/***/ 144:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    Object.defineProperty(o, k2, { enumerable: true, get: function() { return m[k]; } });
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __importStar(__nccwpck_require__(186));
+const config = __importStar(__nccwpck_require__(373));
+const portainer_1 = __nccwpck_require__(162);
+function run() {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const cfg = config.parse();
+            core.debug(`Stack parsed: ${cfg.stack.file}`);
+            core.startGroup('Authentication');
+            const portainer = new portainer_1.PortainerClient(cfg.portainer.url);
+            yield portainer.login(cfg.portainer.username, cfg.portainer.password);
+            core.info("Retrieved authentication token from Portainer");
+            core.endGroup();
+            core.startGroup('Get current state');
+            const stacks = yield portainer.getStacks(cfg.portainer.endpoint);
+            let stack = stacks.find(item => item.name === cfg.stack.name);
+            core.endGroup();
+            if (stack) {
+                if (cfg.stack.delete) {
+                    core.startGroup('Delete existing stack');
+                    core.info(`Delete existing stack (ID: ${stack.id})...`);
+                    yield portainer.deleteStack({
+                        id: stack.id,
+                        endpoint: cfg.portainer.endpoint
+                    });
+                    core.info("Stack deleted.");
+                    core.endGroup();
+                }
+                else {
+                    core.startGroup('Update existing stack');
+                    core.info(`Updating existing stack (ID: ${stack.id}; prune: ${cfg.stack.prune})...`);
+                    yield portainer.updateStack({
+                        id: stack.id,
+                        endpoint: cfg.portainer.endpoint,
+                        file: cfg.stack.file,
+                        prune: cfg.stack.prune,
+                    });
+                    core.info("Stack updated.");
+                    core.endGroup();
+                }
+            }
+            else {
+                core.startGroup('Create new stack');
+                core.info("Creating new stack...");
+                yield portainer.createStack({
+                    endpoint: cfg.portainer.endpoint,
+                    name: cfg.stack.name,
+                    file: cfg.stack.file
+                });
+                core.info("Stack created.");
+                core.endGroup();
+            }
+        }
+        catch (e) {
+            core.setFailed(`Action failed with error: ${e}`);
+        }
+    });
+}
+run();
+
+
+/***/ }),
+
+/***/ 162:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PortainerClient = void 0;
+const axios_1 = __importDefault(__nccwpck_require__(545));
+class PortainerClient {
+    constructor(url) {
+        this.token = null;
+        if (url.pathname !== '/api/') {
+            url.pathname = '/api/';
+        }
+        /**
+         * Create axios instance for requests.
+         */
+        this.client = axios_1.default.create({
+            baseURL: url.toString()
+        });
+        /**
+         * Create Axios Interceptor for Authorization header if token is set.
+         */
+        this.client.interceptors.request.use((config) => {
+            if (this.token) {
+                config.headers['Authorization'] = `Bearer ${this.token}`;
+            }
+            return config;
+        });
+    }
+    /**
+     * Authenticate against the Portainer API and store the JWT.
+     *
+     * @param username {String} - username to authenticate with.
+     * @param password {String} - password to authenticate with.
+     */
+    login(username, password) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data } = yield this.client.post('/auth', {
+                username,
+                password
+            });
+            this.token = data.jwt;
+        });
+    }
+    /**
+     * Retrieve the swarm ID from the Portainer Endpoint.
+     *
+     * @param endpoint {Number} - Portainer endpoint ID.
+     */
+    getSwarmId(endpoint) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data } = yield this.client.get(`/endpoints/${endpoint}/docker/swarm`);
+            return data.ID;
+        });
+    }
+    /**
+     * Retrieve all existing stacks from swarm.
+     *
+     * @param endpoint {Number} - Portainer endpoint ID.
+     */
+    getStacks(endpoint) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const swarmId = yield this.getSwarmId(endpoint);
+            const { data } = yield this.client.get('/stacks', {
+                params: {
+                    filters: JSON.stringify({
+                        SwarmId: swarmId
+                    })
+                }
+            });
+            return data.map((item) => ({
+                id: item.Id,
+                name: item.Name
+            }));
+        });
+    }
+    /**
+     * Create new stack and return name and id of it.
+     *
+     * @param payload {CreateStackPayload} - Payload for the stack to be created.
+     */
+    createStack(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data } = yield this.client.post('/stacks', {
+                name: payload.name,
+                stackFileContent: payload.file
+            }, {
+                params: {
+                    endpointId: payload.endpoint,
+                    method: 'string',
+                    type: 2
+                }
+            });
+            return {
+                id: data.Id,
+                name: data.Name
+            };
+        });
+    }
+    /**
+     * Update existing stack with given data.
+     *
+     * @param payload {UpdateStackPayload} - Payload for the stack to be updated.
+     */
+    updateStack(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { data } = yield this.client.put(`/stacks/${payload.id}`, {
+                stackFileContent: payload.file,
+                prune: payload.prune
+            }, {
+                params: {
+                    endpointId: payload.endpoint
+                }
+            });
+            return {
+                id: data.Id,
+                name: data.Name
+            };
+        });
+    }
+    /**
+     * Delete a stack by the given ID.
+     *
+     * @param payload {DeleteStackPayload} - ID of the stack to be deleted.
+     */
+    deleteStack(payload) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield this.client.delete(`/stacks/${payload.id}`, {
+                params: {
+                    external: true,
+                    endpointId: payload.endpoint
+                }
+            });
+        });
+    }
+}
+exports.PortainerClient = PortainerClient;
+
+
+/***/ }),
+
 /***/ 975:
 /***/ ((module) => {
 
@@ -3111,7 +4487,7 @@ module.exports = eval("require")("debug");
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"name":"axios","version":"0.21.1","description":"Promise based HTTP client for the browser and node.js","main":"index.js","scripts":{"test":"grunt test && bundlesize","start":"node ./sandbox/server.js","build":"NODE_ENV=production grunt build","preversion":"npm test","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json","postversion":"git push && git push --tags","examples":"node ./examples/server.js","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","fix":"eslint --fix lib/**/*.js"},"repository":{"type":"git","url":"https://github.com/axios/axios.git"},"keywords":["xhr","http","ajax","promise","node"],"author":"Matt Zabriskie","license":"MIT","bugs":{"url":"https://github.com/axios/axios/issues"},"homepage":"https://github.com/axios/axios","devDependencies":{"bundlesize":"^0.17.0","coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.0.2","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^20.1.0","grunt-karma":"^2.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^1.0.18","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^1.3.0","karma-chrome-launcher":"^2.2.0","karma-coverage":"^1.1.1","karma-firefox-launcher":"^1.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-opera-launcher":"^1.0.0","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^1.2.0","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.7","karma-webpack":"^1.7.0","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^5.2.0","sinon":"^4.5.0","typescript":"^2.8.1","url-search-params":"^0.10.0","webpack":"^1.13.1","webpack-dev-server":"^1.14.1"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"jsdelivr":"dist/axios.min.js","unpkg":"dist/axios.min.js","typings":"./index.d.ts","dependencies":{"follow-redirects":"^1.10.0"},"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}]}');
+module.exports = JSON.parse('{"name":"axios","version":"0.21.4","description":"Promise based HTTP client for the browser and node.js","main":"index.js","scripts":{"test":"grunt test","start":"node ./sandbox/server.js","build":"NODE_ENV=production grunt build","preversion":"npm test","version":"npm run build && grunt version && git add -A dist && git add CHANGELOG.md bower.json package.json","postversion":"git push && git push --tags","examples":"node ./examples/server.js","coveralls":"cat coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js","fix":"eslint --fix lib/**/*.js"},"repository":{"type":"git","url":"https://github.com/axios/axios.git"},"keywords":["xhr","http","ajax","promise","node"],"author":"Matt Zabriskie","license":"MIT","bugs":{"url":"https://github.com/axios/axios/issues"},"homepage":"https://axios-http.com","devDependencies":{"coveralls":"^3.0.0","es6-promise":"^4.2.4","grunt":"^1.3.0","grunt-banner":"^0.6.0","grunt-cli":"^1.2.0","grunt-contrib-clean":"^1.1.0","grunt-contrib-watch":"^1.0.0","grunt-eslint":"^23.0.0","grunt-karma":"^4.0.0","grunt-mocha-test":"^0.13.3","grunt-ts":"^6.0.0-beta.19","grunt-webpack":"^4.0.2","istanbul-instrumenter-loader":"^1.0.0","jasmine-core":"^2.4.1","karma":"^6.3.2","karma-chrome-launcher":"^3.1.0","karma-firefox-launcher":"^2.1.0","karma-jasmine":"^1.1.1","karma-jasmine-ajax":"^0.1.13","karma-safari-launcher":"^1.0.0","karma-sauce-launcher":"^4.3.6","karma-sinon":"^1.0.5","karma-sourcemap-loader":"^0.3.8","karma-webpack":"^4.0.2","load-grunt-tasks":"^3.5.2","minimist":"^1.2.0","mocha":"^8.2.1","sinon":"^4.5.0","terser-webpack-plugin":"^4.2.3","typescript":"^4.0.5","url-search-params":"^0.10.0","webpack":"^4.44.2","webpack-dev-server":"^3.11.0"},"browser":{"./lib/adapters/http.js":"./lib/adapters/xhr.js"},"jsdelivr":"dist/axios.min.js","unpkg":"dist/axios.min.js","typings":"./index.d.ts","dependencies":{"follow-redirects":"^1.14.0"},"bundlesize":[{"path":"./dist/axios.min.js","threshold":"5kB"}]}');
 
 /***/ }),
 
@@ -3220,1080 +4596,18 @@ module.exports = require("zlib");
 /******/ 	}
 /******/ 	
 /************************************************************************/
-/******/ 	/* webpack/runtime/compat get default export */
-/******/ 	(() => {
-/******/ 		// getDefaultExport function for compatibility with non-harmony modules
-/******/ 		__nccwpck_require__.n = (module) => {
-/******/ 			var getter = module && module.__esModule ?
-/******/ 				() => (module['default']) :
-/******/ 				() => (module);
-/******/ 			__nccwpck_require__.d(getter, { a: getter });
-/******/ 			return getter;
-/******/ 		};
-/******/ 	})();
-/******/ 	
-/******/ 	/* webpack/runtime/define property getters */
-/******/ 	(() => {
-/******/ 		// define getter functions for harmony exports
-/******/ 		__nccwpck_require__.d = (exports, definition) => {
-/******/ 			for(var key in definition) {
-/******/ 				if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
-/******/ 					Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
-/******/ 				}
-/******/ 			}
-/******/ 		};
-/******/ 	})();
-/******/ 	
-/******/ 	/* webpack/runtime/hasOwnProperty shorthand */
-/******/ 	(() => {
-/******/ 		__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
-/******/ 	})();
-/******/ 	
-/******/ 	/* webpack/runtime/make namespace object */
-/******/ 	(() => {
-/******/ 		// define __esModule on exports
-/******/ 		__nccwpck_require__.r = (exports) => {
-/******/ 			if(typeof Symbol !== 'undefined' && Symbol.toStringTag) {
-/******/ 				Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
-/******/ 			}
-/******/ 			Object.defineProperty(exports, '__esModule', { value: true });
-/******/ 		};
-/******/ 	})();
-/******/ 	
 /******/ 	/* webpack/runtime/compat */
 /******/ 	
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-// This entry need to be wrapped in an IIFE because it need to be in strict mode.
-(() => {
-"use strict";
-// ESM COMPAT FLAG
-__nccwpck_require__.r(__webpack_exports__);
-
-// EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(186);
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __nccwpck_require__(747);
-;// CONCATENATED MODULE: ./node_modules/mustache/mustache.mjs
-/*!
- * mustache.js - Logic-less {{mustache}} templates with JavaScript
- * http://github.com/janl/mustache.js
- */
-
-var objectToString = Object.prototype.toString;
-var isArray = Array.isArray || function isArrayPolyfill (object) {
-  return objectToString.call(object) === '[object Array]';
-};
-
-function isFunction (object) {
-  return typeof object === 'function';
-}
-
-/**
- * More correct typeof string handling array
- * which normally returns typeof 'object'
- */
-function typeStr (obj) {
-  return isArray(obj) ? 'array' : typeof obj;
-}
-
-function escapeRegExp (string) {
-  return string.replace(/[\-\[\]{}()*+?.,\\\^$|#\s]/g, '\\$&');
-}
-
-/**
- * Null safe way of checking whether or not an object,
- * including its prototype, has a given property
- */
-function hasProperty (obj, propName) {
-  return obj != null && typeof obj === 'object' && (propName in obj);
-}
-
-/**
- * Safe way of detecting whether or not the given thing is a primitive and
- * whether it has the given property
- */
-function primitiveHasOwnProperty (primitive, propName) {
-  return (
-    primitive != null
-    && typeof primitive !== 'object'
-    && primitive.hasOwnProperty
-    && primitive.hasOwnProperty(propName)
-  );
-}
-
-// Workaround for https://issues.apache.org/jira/browse/COUCHDB-577
-// See https://github.com/janl/mustache.js/issues/189
-var regExpTest = RegExp.prototype.test;
-function testRegExp (re, string) {
-  return regExpTest.call(re, string);
-}
-
-var nonSpaceRe = /\S/;
-function isWhitespace (string) {
-  return !testRegExp(nonSpaceRe, string);
-}
-
-var entityMap = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-  '/': '&#x2F;',
-  '`': '&#x60;',
-  '=': '&#x3D;'
-};
-
-function escapeHtml (string) {
-  return String(string).replace(/[&<>"'`=\/]/g, function fromEntityMap (s) {
-    return entityMap[s];
-  });
-}
-
-var whiteRe = /\s*/;
-var spaceRe = /\s+/;
-var equalsRe = /\s*=/;
-var curlyRe = /\s*\}/;
-var tagRe = /#|\^|\/|>|\{|&|=|!/;
-
-/**
- * Breaks up the given `template` string into a tree of tokens. If the `tags`
- * argument is given here it must be an array with two string values: the
- * opening and closing tags used in the template (e.g. [ "<%", "%>" ]). Of
- * course, the default is to use mustaches (i.e. mustache.tags).
- *
- * A token is an array with at least 4 elements. The first element is the
- * mustache symbol that was used inside the tag, e.g. "#" or "&". If the tag
- * did not contain a symbol (i.e. {{myValue}}) this element is "name". For
- * all text that appears outside a symbol this element is "text".
- *
- * The second element of a token is its "value". For mustache tags this is
- * whatever else was inside the tag besides the opening symbol. For text tokens
- * this is the text itself.
- *
- * The third and fourth elements of the token are the start and end indices,
- * respectively, of the token in the original template.
- *
- * Tokens that are the root node of a subtree contain two more elements: 1) an
- * array of tokens in the subtree and 2) the index in the original template at
- * which the closing tag for that section begins.
- *
- * Tokens for partials also contain two more elements: 1) a string value of
- * indendation prior to that tag and 2) the index of that tag on that line -
- * eg a value of 2 indicates the partial is the third tag on this line.
- */
-function parseTemplate (template, tags) {
-  if (!template)
-    return [];
-  var lineHasNonSpace = false;
-  var sections = [];     // Stack to hold section tokens
-  var tokens = [];       // Buffer to hold the tokens
-  var spaces = [];       // Indices of whitespace tokens on the current line
-  var hasTag = false;    // Is there a {{tag}} on the current line?
-  var nonSpace = false;  // Is there a non-space char on the current line?
-  var indentation = '';  // Tracks indentation for tags that use it
-  var tagIndex = 0;      // Stores a count of number of tags encountered on a line
-
-  // Strips all whitespace tokens array for the current line
-  // if there was a {{#tag}} on it and otherwise only space.
-  function stripSpace () {
-    if (hasTag && !nonSpace) {
-      while (spaces.length)
-        delete tokens[spaces.pop()];
-    } else {
-      spaces = [];
-    }
-
-    hasTag = false;
-    nonSpace = false;
-  }
-
-  var openingTagRe, closingTagRe, closingCurlyRe;
-  function compileTags (tagsToCompile) {
-    if (typeof tagsToCompile === 'string')
-      tagsToCompile = tagsToCompile.split(spaceRe, 2);
-
-    if (!isArray(tagsToCompile) || tagsToCompile.length !== 2)
-      throw new Error('Invalid tags: ' + tagsToCompile);
-
-    openingTagRe = new RegExp(escapeRegExp(tagsToCompile[0]) + '\\s*');
-    closingTagRe = new RegExp('\\s*' + escapeRegExp(tagsToCompile[1]));
-    closingCurlyRe = new RegExp('\\s*' + escapeRegExp('}' + tagsToCompile[1]));
-  }
-
-  compileTags(tags || mustache.tags);
-
-  var scanner = new Scanner(template);
-
-  var start, type, value, chr, token, openSection;
-  while (!scanner.eos()) {
-    start = scanner.pos;
-
-    // Match any text between tags.
-    value = scanner.scanUntil(openingTagRe);
-
-    if (value) {
-      for (var i = 0, valueLength = value.length; i < valueLength; ++i) {
-        chr = value.charAt(i);
-
-        if (isWhitespace(chr)) {
-          spaces.push(tokens.length);
-          indentation += chr;
-        } else {
-          nonSpace = true;
-          lineHasNonSpace = true;
-          indentation += ' ';
-        }
-
-        tokens.push([ 'text', chr, start, start + 1 ]);
-        start += 1;
-
-        // Check for whitespace on the current line.
-        if (chr === '\n') {
-          stripSpace();
-          indentation = '';
-          tagIndex = 0;
-          lineHasNonSpace = false;
-        }
-      }
-    }
-
-    // Match the opening tag.
-    if (!scanner.scan(openingTagRe))
-      break;
-
-    hasTag = true;
-
-    // Get the tag type.
-    type = scanner.scan(tagRe) || 'name';
-    scanner.scan(whiteRe);
-
-    // Get the tag value.
-    if (type === '=') {
-      value = scanner.scanUntil(equalsRe);
-      scanner.scan(equalsRe);
-      scanner.scanUntil(closingTagRe);
-    } else if (type === '{') {
-      value = scanner.scanUntil(closingCurlyRe);
-      scanner.scan(curlyRe);
-      scanner.scanUntil(closingTagRe);
-      type = '&';
-    } else {
-      value = scanner.scanUntil(closingTagRe);
-    }
-
-    // Match the closing tag.
-    if (!scanner.scan(closingTagRe))
-      throw new Error('Unclosed tag at ' + scanner.pos);
-
-    if (type == '>') {
-      token = [ type, value, start, scanner.pos, indentation, tagIndex, lineHasNonSpace ];
-    } else {
-      token = [ type, value, start, scanner.pos ];
-    }
-    tagIndex++;
-    tokens.push(token);
-
-    if (type === '#' || type === '^') {
-      sections.push(token);
-    } else if (type === '/') {
-      // Check section nesting.
-      openSection = sections.pop();
-
-      if (!openSection)
-        throw new Error('Unopened section "' + value + '" at ' + start);
-
-      if (openSection[1] !== value)
-        throw new Error('Unclosed section "' + openSection[1] + '" at ' + start);
-    } else if (type === 'name' || type === '{' || type === '&') {
-      nonSpace = true;
-    } else if (type === '=') {
-      // Set the tags for the next time around.
-      compileTags(value);
-    }
-  }
-
-  stripSpace();
-
-  // Make sure there are no open sections when we're done.
-  openSection = sections.pop();
-
-  if (openSection)
-    throw new Error('Unclosed section "' + openSection[1] + '" at ' + scanner.pos);
-
-  return nestTokens(squashTokens(tokens));
-}
-
-/**
- * Combines the values of consecutive text tokens in the given `tokens` array
- * to a single token.
- */
-function squashTokens (tokens) {
-  var squashedTokens = [];
-
-  var token, lastToken;
-  for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
-    token = tokens[i];
-
-    if (token) {
-      if (token[0] === 'text' && lastToken && lastToken[0] === 'text') {
-        lastToken[1] += token[1];
-        lastToken[3] = token[3];
-      } else {
-        squashedTokens.push(token);
-        lastToken = token;
-      }
-    }
-  }
-
-  return squashedTokens;
-}
-
-/**
- * Forms the given array of `tokens` into a nested tree structure where
- * tokens that represent a section have two additional items: 1) an array of
- * all tokens that appear in that section and 2) the index in the original
- * template that represents the end of that section.
- */
-function nestTokens (tokens) {
-  var nestedTokens = [];
-  var collector = nestedTokens;
-  var sections = [];
-
-  var token, section;
-  for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
-    token = tokens[i];
-
-    switch (token[0]) {
-      case '#':
-      case '^':
-        collector.push(token);
-        sections.push(token);
-        collector = token[4] = [];
-        break;
-      case '/':
-        section = sections.pop();
-        section[5] = token[2];
-        collector = sections.length > 0 ? sections[sections.length - 1][4] : nestedTokens;
-        break;
-      default:
-        collector.push(token);
-    }
-  }
-
-  return nestedTokens;
-}
-
-/**
- * A simple string scanner that is used by the template parser to find
- * tokens in template strings.
- */
-function Scanner (string) {
-  this.string = string;
-  this.tail = string;
-  this.pos = 0;
-}
-
-/**
- * Returns `true` if the tail is empty (end of string).
- */
-Scanner.prototype.eos = function eos () {
-  return this.tail === '';
-};
-
-/**
- * Tries to match the given regular expression at the current position.
- * Returns the matched text if it can match, the empty string otherwise.
- */
-Scanner.prototype.scan = function scan (re) {
-  var match = this.tail.match(re);
-
-  if (!match || match.index !== 0)
-    return '';
-
-  var string = match[0];
-
-  this.tail = this.tail.substring(string.length);
-  this.pos += string.length;
-
-  return string;
-};
-
-/**
- * Skips all text until the given regular expression can be matched. Returns
- * the skipped string, which is the entire tail if no match can be made.
- */
-Scanner.prototype.scanUntil = function scanUntil (re) {
-  var index = this.tail.search(re), match;
-
-  switch (index) {
-    case -1:
-      match = this.tail;
-      this.tail = '';
-      break;
-    case 0:
-      match = '';
-      break;
-    default:
-      match = this.tail.substring(0, index);
-      this.tail = this.tail.substring(index);
-  }
-
-  this.pos += match.length;
-
-  return match;
-};
-
-/**
- * Represents a rendering context by wrapping a view object and
- * maintaining a reference to the parent context.
- */
-function Context (view, parentContext) {
-  this.view = view;
-  this.cache = { '.': this.view };
-  this.parent = parentContext;
-}
-
-/**
- * Creates a new context using the given view with this context
- * as the parent.
- */
-Context.prototype.push = function push (view) {
-  return new Context(view, this);
-};
-
-/**
- * Returns the value of the given name in this context, traversing
- * up the context hierarchy if the value is absent in this context's view.
- */
-Context.prototype.lookup = function lookup (name) {
-  var cache = this.cache;
-
-  var value;
-  if (cache.hasOwnProperty(name)) {
-    value = cache[name];
-  } else {
-    var context = this, intermediateValue, names, index, lookupHit = false;
-
-    while (context) {
-      if (name.indexOf('.') > 0) {
-        intermediateValue = context.view;
-        names = name.split('.');
-        index = 0;
-
-        /**
-         * Using the dot notion path in `name`, we descend through the
-         * nested objects.
-         *
-         * To be certain that the lookup has been successful, we have to
-         * check if the last object in the path actually has the property
-         * we are looking for. We store the result in `lookupHit`.
-         *
-         * This is specially necessary for when the value has been set to
-         * `undefined` and we want to avoid looking up parent contexts.
-         *
-         * In the case where dot notation is used, we consider the lookup
-         * to be successful even if the last "object" in the path is
-         * not actually an object but a primitive (e.g., a string, or an
-         * integer), because it is sometimes useful to access a property
-         * of an autoboxed primitive, such as the length of a string.
-         **/
-        while (intermediateValue != null && index < names.length) {
-          if (index === names.length - 1)
-            lookupHit = (
-              hasProperty(intermediateValue, names[index])
-              || primitiveHasOwnProperty(intermediateValue, names[index])
-            );
-
-          intermediateValue = intermediateValue[names[index++]];
-        }
-      } else {
-        intermediateValue = context.view[name];
-
-        /**
-         * Only checking against `hasProperty`, which always returns `false` if
-         * `context.view` is not an object. Deliberately omitting the check
-         * against `primitiveHasOwnProperty` if dot notation is not used.
-         *
-         * Consider this example:
-         * ```
-         * Mustache.render("The length of a football field is {{#length}}{{length}}{{/length}}.", {length: "100 yards"})
-         * ```
-         *
-         * If we were to check also against `primitiveHasOwnProperty`, as we do
-         * in the dot notation case, then render call would return:
-         *
-         * "The length of a football field is 9."
-         *
-         * rather than the expected:
-         *
-         * "The length of a football field is 100 yards."
-         **/
-        lookupHit = hasProperty(context.view, name);
-      }
-
-      if (lookupHit) {
-        value = intermediateValue;
-        break;
-      }
-
-      context = context.parent;
-    }
-
-    cache[name] = value;
-  }
-
-  if (isFunction(value))
-    value = value.call(this.view);
-
-  return value;
-};
-
-/**
- * A Writer knows how to take a stream of tokens and render them to a
- * string, given a context. It also maintains a cache of templates to
- * avoid the need to parse the same template twice.
- */
-function Writer () {
-  this.templateCache = {
-    _cache: {},
-    set: function set (key, value) {
-      this._cache[key] = value;
-    },
-    get: function get (key) {
-      return this._cache[key];
-    },
-    clear: function clear () {
-      this._cache = {};
-    }
-  };
-}
-
-/**
- * Clears all cached templates in this writer.
- */
-Writer.prototype.clearCache = function clearCache () {
-  if (typeof this.templateCache !== 'undefined') {
-    this.templateCache.clear();
-  }
-};
-
-/**
- * Parses and caches the given `template` according to the given `tags` or
- * `mustache.tags` if `tags` is omitted,  and returns the array of tokens
- * that is generated from the parse.
- */
-Writer.prototype.parse = function parse (template, tags) {
-  var cache = this.templateCache;
-  var cacheKey = template + ':' + (tags || mustache.tags).join(':');
-  var isCacheEnabled = typeof cache !== 'undefined';
-  var tokens = isCacheEnabled ? cache.get(cacheKey) : undefined;
-
-  if (tokens == undefined) {
-    tokens = parseTemplate(template, tags);
-    isCacheEnabled && cache.set(cacheKey, tokens);
-  }
-  return tokens;
-};
-
-/**
- * High-level method that is used to render the given `template` with
- * the given `view`.
- *
- * The optional `partials` argument may be an object that contains the
- * names and templates of partials that are used in the template. It may
- * also be a function that is used to load partial templates on the fly
- * that takes a single argument: the name of the partial.
- *
- * If the optional `config` argument is given here, then it should be an
- * object with a `tags` attribute or an `escape` attribute or both.
- * If an array is passed, then it will be interpreted the same way as
- * a `tags` attribute on a `config` object.
- *
- * The `tags` attribute of a `config` object must be an array with two
- * string values: the opening and closing tags used in the template (e.g.
- * [ "<%", "%>" ]). The default is to mustache.tags.
- *
- * The `escape` attribute of a `config` object must be a function which
- * accepts a string as input and outputs a safely escaped string.
- * If an `escape` function is not provided, then an HTML-safe string
- * escaping function is used as the default.
- */
-Writer.prototype.render = function render (template, view, partials, config) {
-  var tags = this.getConfigTags(config);
-  var tokens = this.parse(template, tags);
-  var context = (view instanceof Context) ? view : new Context(view, undefined);
-  return this.renderTokens(tokens, context, partials, template, config);
-};
-
-/**
- * Low-level method that renders the given array of `tokens` using
- * the given `context` and `partials`.
- *
- * Note: The `originalTemplate` is only ever used to extract the portion
- * of the original template that was contained in a higher-order section.
- * If the template doesn't use higher-order sections, this argument may
- * be omitted.
- */
-Writer.prototype.renderTokens = function renderTokens (tokens, context, partials, originalTemplate, config) {
-  var buffer = '';
-
-  var token, symbol, value;
-  for (var i = 0, numTokens = tokens.length; i < numTokens; ++i) {
-    value = undefined;
-    token = tokens[i];
-    symbol = token[0];
-
-    if (symbol === '#') value = this.renderSection(token, context, partials, originalTemplate, config);
-    else if (symbol === '^') value = this.renderInverted(token, context, partials, originalTemplate, config);
-    else if (symbol === '>') value = this.renderPartial(token, context, partials, config);
-    else if (symbol === '&') value = this.unescapedValue(token, context);
-    else if (symbol === 'name') value = this.escapedValue(token, context, config);
-    else if (symbol === 'text') value = this.rawValue(token);
-
-    if (value !== undefined)
-      buffer += value;
-  }
-
-  return buffer;
-};
-
-Writer.prototype.renderSection = function renderSection (token, context, partials, originalTemplate, config) {
-  var self = this;
-  var buffer = '';
-  var value = context.lookup(token[1]);
-
-  // This function is used to render an arbitrary template
-  // in the current context by higher-order sections.
-  function subRender (template) {
-    return self.render(template, context, partials, config);
-  }
-
-  if (!value) return;
-
-  if (isArray(value)) {
-    for (var j = 0, valueLength = value.length; j < valueLength; ++j) {
-      buffer += this.renderTokens(token[4], context.push(value[j]), partials, originalTemplate, config);
-    }
-  } else if (typeof value === 'object' || typeof value === 'string' || typeof value === 'number') {
-    buffer += this.renderTokens(token[4], context.push(value), partials, originalTemplate, config);
-  } else if (isFunction(value)) {
-    if (typeof originalTemplate !== 'string')
-      throw new Error('Cannot use higher-order sections without the original template');
-
-    // Extract the portion of the original template that the section contains.
-    value = value.call(context.view, originalTemplate.slice(token[3], token[5]), subRender);
-
-    if (value != null)
-      buffer += value;
-  } else {
-    buffer += this.renderTokens(token[4], context, partials, originalTemplate, config);
-  }
-  return buffer;
-};
-
-Writer.prototype.renderInverted = function renderInverted (token, context, partials, originalTemplate, config) {
-  var value = context.lookup(token[1]);
-
-  // Use JavaScript's definition of falsy. Include empty arrays.
-  // See https://github.com/janl/mustache.js/issues/186
-  if (!value || (isArray(value) && value.length === 0))
-    return this.renderTokens(token[4], context, partials, originalTemplate, config);
-};
-
-Writer.prototype.indentPartial = function indentPartial (partial, indentation, lineHasNonSpace) {
-  var filteredIndentation = indentation.replace(/[^ \t]/g, '');
-  var partialByNl = partial.split('\n');
-  for (var i = 0; i < partialByNl.length; i++) {
-    if (partialByNl[i].length && (i > 0 || !lineHasNonSpace)) {
-      partialByNl[i] = filteredIndentation + partialByNl[i];
-    }
-  }
-  return partialByNl.join('\n');
-};
-
-Writer.prototype.renderPartial = function renderPartial (token, context, partials, config) {
-  if (!partials) return;
-  var tags = this.getConfigTags(config);
-
-  var value = isFunction(partials) ? partials(token[1]) : partials[token[1]];
-  if (value != null) {
-    var lineHasNonSpace = token[6];
-    var tagIndex = token[5];
-    var indentation = token[4];
-    var indentedValue = value;
-    if (tagIndex == 0 && indentation) {
-      indentedValue = this.indentPartial(value, indentation, lineHasNonSpace);
-    }
-    var tokens = this.parse(indentedValue, tags);
-    return this.renderTokens(tokens, context, partials, indentedValue, config);
-  }
-};
-
-Writer.prototype.unescapedValue = function unescapedValue (token, context) {
-  var value = context.lookup(token[1]);
-  if (value != null)
-    return value;
-};
-
-Writer.prototype.escapedValue = function escapedValue (token, context, config) {
-  var escape = this.getConfigEscape(config) || mustache.escape;
-  var value = context.lookup(token[1]);
-  if (value != null)
-    return (typeof value === 'number' && escape === mustache.escape) ? String(value) : escape(value);
-};
-
-Writer.prototype.rawValue = function rawValue (token) {
-  return token[1];
-};
-
-Writer.prototype.getConfigTags = function getConfigTags (config) {
-  if (isArray(config)) {
-    return config;
-  }
-  else if (config && typeof config === 'object') {
-    return config.tags;
-  }
-  else {
-    return undefined;
-  }
-};
-
-Writer.prototype.getConfigEscape = function getConfigEscape (config) {
-  if (config && typeof config === 'object' && !isArray(config)) {
-    return config.escape;
-  }
-  else {
-    return undefined;
-  }
-};
-
-var mustache = {
-  name: 'mustache.js',
-  version: '4.2.0',
-  tags: [ '{{', '}}' ],
-  clearCache: undefined,
-  escape: undefined,
-  parse: undefined,
-  render: undefined,
-  Scanner: undefined,
-  Context: undefined,
-  Writer: undefined,
-  /**
-   * Allows a user to override the default caching strategy, by providing an
-   * object with set, get and clear methods. This can also be used to disable
-   * the cache by setting it to the literal `undefined`.
-   */
-  set templateCache (cache) {
-    defaultWriter.templateCache = cache;
-  },
-  /**
-   * Gets the default or overridden caching object from the default writer.
-   */
-  get templateCache () {
-    return defaultWriter.templateCache;
-  }
-};
-
-// All high-level mustache.* functions use this writer.
-var defaultWriter = new Writer();
-
-/**
- * Clears all cached templates in the default writer.
- */
-mustache.clearCache = function clearCache () {
-  return defaultWriter.clearCache();
-};
-
-/**
- * Parses and caches the given template in the default writer and returns the
- * array of tokens it contains. Doing this ahead of time avoids the need to
- * parse templates on the fly as they are rendered.
- */
-mustache.parse = function parse (template, tags) {
-  return defaultWriter.parse(template, tags);
-};
-
-/**
- * Renders the `template` with the given `view`, `partials`, and `config`
- * using the default writer.
- */
-mustache.render = function render (template, view, partials, config) {
-  if (typeof template !== 'string') {
-    throw new TypeError('Invalid template! Template should be a "string" ' +
-                        'but "' + typeStr(template) + '" was given as the first ' +
-                        'argument for mustache#render(template, view, partials)');
-  }
-
-  return defaultWriter.render(template, view, partials, config);
-};
-
-// Export the escaping function so that the user may override it.
-// See https://github.com/janl/mustache.js/issues/244
-mustache.escape = escapeHtml;
-
-// Export these mainly for testing, but also for advanced usage.
-mustache.Scanner = Scanner;
-mustache.Context = Context;
-mustache.Writer = Writer;
-
-/* harmony default export */ const mustache_mustache = (mustache);
-
-;// CONCATENATED MODULE: ./src/config.ts
-
-
-
-function parsePortainerConfig() {
-    return {
-        url: new URL(core.getInput('portainer-url', { required: true })),
-        username: core.getInput('portainer-username', { required: true }),
-        password: core.getInput('portainer-password', { required: true }),
-        endpoint: parseInt(core.getInput('portainer-endpoint', { required: true }))
-    };
-}
-function parseStackConfig() {
-    const filePath = core.getInput('file', { required: true });
-    let file = external_fs_.readFileSync(filePath, 'utf-8');
-    if (filePath.split('.').pop() === 'mustache') {
-        mustache_mustache.escape = JSON.stringify;
-        file = mustache_mustache.render(file, JSON.parse(core.getInput('variables', { required: false })));
-    }
-    return {
-        name: core.getInput('name', { required: true }),
-        file,
-        delete: !!core.getInput('delete', { required: false }).length,
-        prune: !!core.getInput('prune', { required: false }).length
-    };
-}
-function parse() {
-    return {
-        portainer: parsePortainerConfig(),
-        stack: parseStackConfig()
-    };
-}
-
-// EXTERNAL MODULE: ./node_modules/axios/index.js
-var axios = __nccwpck_require__(545);
-var axios_default = /*#__PURE__*/__nccwpck_require__.n(axios);
-;// CONCATENATED MODULE: ./src/portainer.ts
-var __awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-
-class PortainerClient {
-    constructor(url) {
-        this.token = null;
-        if (url.pathname !== '/api/') {
-            url.pathname = '/api/';
-        }
-        /**
-         * Create axios instance for requests.
-         */
-        this.client = axios_default().create({
-            baseURL: url.toString()
-        });
-        /**
-         * Create Axios Interceptor for Authorization header if token is set.
-         */
-        this.client.interceptors.request.use((config) => {
-            if (this.token) {
-                config.headers['Authorization'] = `Bearer ${this.token}`;
-            }
-            return config;
-        });
-    }
-    /**
-     * Authenticate against the Portainer API and store the JWT.
-     *
-     * @param username {String} - username to authenticate with.
-     * @param password {String} - password to authenticate with.
-     */
-    login(username, password) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { data } = yield this.client.post('/auth', {
-                username,
-                password
-            });
-            this.token = data.jwt;
-        });
-    }
-    /**
-     * Retrieve the swarm ID from the Portainer Endpoint.
-     *
-     * @param endpoint {Number} - Portainer endpoint ID.
-     */
-    getSwarmId(endpoint) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { data } = yield this.client.get(`/endpoints/${endpoint}/docker/swarm`);
-            return data.ID;
-        });
-    }
-    /**
-     * Retrieve all existing stacks from swarm.
-     *
-     * @param endpoint {Number} - Portainer endpoint ID.
-     */
-    getStacks(endpoint) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const swarmId = yield this.getSwarmId(endpoint);
-            const { data } = yield this.client.get('/stacks', {
-                params: {
-                    filters: JSON.stringify({
-                        SwarmId: swarmId
-                    })
-                }
-            });
-            return data.map((item) => ({
-                id: item.Id,
-                name: item.Name
-            }));
-        });
-    }
-    /**
-     * Create new stack and return name and id of it.
-     *
-     * @param payload {CreateStackPayload} - Payload for the stack to be created.
-     */
-    createStack(payload) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const swarmId = yield this.getSwarmId(payload.endpoint);
-            const { data } = yield this.client.post('/stacks', {
-                name: payload.name,
-                stackFileContent: payload.file,
-                swarmID: swarmId
-            }, {
-                params: {
-                    endpointId: payload.endpoint,
-                    method: 'string',
-                    type: 1
-                }
-            });
-            return {
-                id: data.Id,
-                name: data.Name
-            };
-        });
-    }
-    /**
-     * Update existing stack with given data.
-     *
-     * @param payload {UpdateStackPayload} - Payload for the stack to be updated.
-     */
-    updateStack(payload) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const { data } = yield this.client.put(`/stacks/${payload.id}`, {
-                stackFileContent: payload.file,
-                prune: payload.prune
-            }, {
-                params: {
-                    endpointId: payload.endpoint
-                }
-            });
-            return {
-                id: data.Id,
-                name: data.Name
-            };
-        });
-    }
-    /**
-     * Delete a stack by the given ID.
-     *
-     * @param payload {DeleteStackPayload} - ID of the stack to be deleted.
-     */
-    deleteStack(payload) {
-        return __awaiter(this, void 0, void 0, function* () {
-            yield this.client.delete(`/stacks/${payload.id}`, {
-                params: {
-                    external: true,
-                    endpointId: payload.endpoint
-                }
-            });
-        });
-    }
-}
-
-;// CONCATENATED MODULE: ./src/index.ts
-var src_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-
-
-
-function run() {
-    return src_awaiter(this, void 0, void 0, function* () {
-        try {
-            const cfg = parse();
-            core.debug(`Stack parsed: ${cfg.stack.file}`);
-            core.startGroup('Authentication');
-            const portainer = new PortainerClient(cfg.portainer.url);
-            yield portainer.login(cfg.portainer.username, cfg.portainer.password);
-            core.info("Retrieved authentication token from Portainer");
-            core.endGroup();
-            core.startGroup('Get current state');
-            const stacks = yield portainer.getStacks(cfg.portainer.endpoint);
-            let stack = stacks.find(item => item.name === cfg.stack.name);
-            core.endGroup();
-            if (stack) {
-                if (cfg.stack.delete) {
-                    core.startGroup('Delete existing stack');
-                    core.info(`Delete existing stack (ID: ${stack.id})...`);
-                    yield portainer.deleteStack({
-                        id: stack.id,
-                        endpoint: cfg.portainer.endpoint
-                    });
-                    core.info("Stack deleted.");
-                    core.endGroup();
-                }
-                else {
-                    core.startGroup('Update existing stack');
-                    core.info(`Updating existing stack (ID: ${stack.id}; prune: ${cfg.stack.prune})...`);
-                    yield portainer.updateStack({
-                        id: stack.id,
-                        endpoint: cfg.portainer.endpoint,
-                        file: cfg.stack.file,
-                        prune: cfg.stack.prune,
-                    });
-                    core.info("Stack updated.");
-                    core.endGroup();
-                }
-            }
-            else {
-                core.startGroup('Create new stack');
-                core.info("Creating new stack...");
-                yield portainer.createStack({
-                    endpoint: cfg.portainer.endpoint,
-                    name: cfg.stack.name,
-                    file: cfg.stack.file
-                });
-                core.info("Stack created.");
-                core.endGroup();
-            }
-        }
-        catch (e) {
-            core.setFailed(`Action failed with error: ${e}`);
-        }
-    });
-}
-run();
-
-})();
-
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(144);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map
