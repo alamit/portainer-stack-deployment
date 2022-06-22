@@ -14,7 +14,7 @@ jobs:
     - name: Clone Repository
 -     uses: actions/checkout@v2
     - name: Deploy Stack
-      uses: kgierke/portainer-stack-deployment@v1
+      uses: bcarneypba/portainer-stack-deployment@v1
       with:
         portainer-url: "https://portainer.example.com"
         portainer-username: "admin"
