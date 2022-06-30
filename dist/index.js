@@ -4320,7 +4320,7 @@ function run() {
                 catch (error) {
                     const axiosError = error;
                     if (axiosError) {
-                        core.debug(`Axios Error: ${(_a = axiosError.response) === null || _a === void 0 ? void 0 : _a.data}`);
+                        core.debug(`Axios Error: ${JSON.stringify((_a = axiosError.response) === null || _a === void 0 ? void 0 : _a.data)}`);
                     }
                 }
                 core.info("Stack created.");

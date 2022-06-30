@@ -65,7 +65,7 @@ async function run() {
             } catch (error) {
                 const axiosError = error as AxiosError;
                 if (axiosError) {
-                    core.debug(`Axios Error: ${axiosError.response?.data}`);
+                    core.debug(`Axios Error: ${JSON.stringify(axiosError.response?.data)}`);
                 }
             }
 
