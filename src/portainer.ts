@@ -87,46 +87,24 @@ export class PortainerClient {
     async createStack(payload: CreateStackPayload): Promise<StackResponse> {
         let stackResponse: StackResponse;
 
-        try {
-            const {portainerStack, portainerResponse}: { portainerStack: Stack, portainerResponse: AxiosResponse } = await this.client.post(
-                '/stacks',
-                {
-                    name: payload.name,
-                    stackFileContent: payload.file
-                },
-                {
-                    params: {
-                        endpointId: payload.endpoint,
-                        method: 'string',
-                        type: 2
-                    }
-                });                
-    
-                stackResponse = {
-                    stack: portainerStack,
-                    response: portainerResponse.data
-                };
-        } catch (error) {
-            const axiosError = error as AxiosError;
-
-            let errorStack: Stack;
-            errorStack = {
-                id: -1,
-                name: "failure"
-            };
-
-            if (axiosError.response) {
-                stackResponse = {
-                    stack: errorStack,
-                    response: axiosError.response.data
-                };
-            } else {
-                stackResponse = {
-                    stack: errorStack,
-                    response: "Failed to obtain response data"
+        const {portainerStack, portainerResponse}: { portainerStack: Stack, portainerResponse: AxiosResponse } = await this.client.post(
+            '/stacks',
+            {
+                name: payload.name,
+                stackFileContent: payload.file
+            },
+            {
+                params: {
+                    endpointId: payload.endpoint,
+                    method: 'string',
+                    type: 2
                 }
-            }            
-        }        
+            });                
+
+            stackResponse = {
+                stack: portainerStack,
+                response: portainerResponse.data
+            };      
 
         return stackResponse;
     }

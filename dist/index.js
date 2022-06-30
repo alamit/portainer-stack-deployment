@@ -4309,14 +4309,22 @@ function run() {
                 core.startGroup('Create new stack');
                 core.info("Creating new stack...");
                 let createStackResponse;
-                yield portainer.createStack({
-                    endpoint: cfg.portainer.endpoint,
-                    name: cfg.stack.name,
-                    file: cfg.stack.file
-                }).then(stackResponse => {
-                    createStackResponse = stackResponse.response;
-                    core.debug(`Create Stack Response: ${createStackResponse}`);
-                });
+                try {
+                    yield portainer.createStack({
+                        endpoint: cfg.portainer.endpoint,
+                        name: cfg.stack.name,
+                        file: cfg.stack.file
+                    }).then(stackResponse => {
+                        createStackResponse = stackResponse.response;
+                        core.debug(`Create Stack Response: ${createStackResponse}`);
+                    });
+                }
+                catch (error) {
+                    const axiosError = error;
+                    if (axiosError) {
+                        core.debug(`Axios Error: ${axiosError}`);
+                    }
+                }
                 core.info("Stack created.");
                 core.endGroup();
             }
@@ -4428,42 +4436,20 @@ class PortainerClient {
     createStack(payload) {
         return __awaiter(this, void 0, void 0, function* () {
             let stackResponse;
-            try {
-                const { portainerStack, portainerResponse } = yield this.client.post('/stacks', {
-                    name: payload.name,
-                    stackFileContent: payload.file
-                }, {
-                    params: {
-                        endpointId: payload.endpoint,
-                        method: 'string',
-                        type: 2
-                    }
-                });
-                stackResponse = {
-                    stack: portainerStack,
-                    response: portainerResponse.data
-                };
-            }
-            catch (error) {
-                const axiosError = error;
-                let errorStack;
-                errorStack = {
-                    id: -1,
-                    name: "failure"
-                };
-                if (axiosError.response) {
-                    stackResponse = {
-                        stack: errorStack,
-                        response: axiosError.response.data
-                    };
+            const { portainerStack, portainerResponse } = yield this.client.post('/stacks', {
+                name: payload.name,
+                stackFileContent: payload.file
+            }, {
+                params: {
+                    endpointId: payload.endpoint,
+                    method: 'string',
+                    type: 2
                 }
-                else {
-                    stackResponse = {
-                        stack: errorStack,
-                        response: "Failed to obtain response data"
-                    };
-                }
-            }
+            });
+            stackResponse = {
+                stack: portainerStack,
+                response: portainerResponse.data
+            };
             return stackResponse;
         });
     }

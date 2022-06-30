@@ -1,4 +1,5 @@
 import * as core from '@actions/core';
+import axios, { AxiosError } from 'axios';
 import * as config from './config';
 import {PortainerClient} from './portainer';
 
@@ -55,14 +56,21 @@ async function run() {
 
             let createStackResponse: string;
 
-            await portainer.createStack({
-                endpoint: cfg.portainer.endpoint,
-                name: cfg.stack.name,
-                file: cfg.stack.file
-            }).then(stackResponse => {
-                createStackResponse = stackResponse.response;
-                core.debug(`Create Stack Response: ${createStackResponse}`);
-            })
+            try {
+                await portainer.createStack({
+                    endpoint: cfg.portainer.endpoint,
+                    name: cfg.stack.name,
+                    file: cfg.stack.file
+                }).then(stackResponse => {
+                    createStackResponse = stackResponse.response;
+                    core.debug(`Create Stack Response: ${createStackResponse}`);
+                })
+            } catch (error) {
+                const axiosError = error as AxiosError;
+                if (axiosError) {
+                    core.debug(`Axios Error: ${axiosError}`)
+                }
+            }
 
             core.info("Stack created.");
             core.endGroup();
