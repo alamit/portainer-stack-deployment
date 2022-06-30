@@ -1,5 +1,6 @@
-import axios, {AxiosInstance, AxiosRequestConfig} from 'axios';
-import {CreateStackPayload, DeleteStackPayload, PortainerStack, Stack, UpdateStackPayload} from "./types";
+import axios, {AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse} from 'axios';
+import { countReset } from 'console';
+import {CreateStackPayload, DeleteStackPayload, PortainerStack, Stack, StackResponse, UpdateStackPayload} from "./types";
 
 export class PortainerClient {
     token = null;
@@ -83,25 +84,51 @@ export class PortainerClient {
      *
      * @param payload {CreateStackPayload} - Payload for the stack to be created.
      */
-    async createStack(payload: CreateStackPayload): Promise<Stack> {
-        const {data}: { data: PortainerStack } = await this.client.post(
-            '/stacks',
-            {
-                name: payload.name,
-                stackFileContent: payload.file
-            },
-            {
-                params: {
-                    endpointId: payload.endpoint,
-                    method: 'string',
-                    type: 2
-                }
-            });
+    async createStack(payload: CreateStackPayload): Promise<StackResponse> {
+        let stackResponse: StackResponse;
 
-        return {
-            id: data.Id,
-            name: data.Name
-        };
+        try {
+            const {portainerStack, portainerResponse}: { portainerStack: Stack, portainerResponse: AxiosResponse } = await this.client.post(
+                '/stacks',
+                {
+                    name: payload.name,
+                    stackFileContent: payload.file
+                },
+                {
+                    params: {
+                        endpointId: payload.endpoint,
+                        method: 'string',
+                        type: 2
+                    }
+                });                
+    
+                stackResponse = {
+                    stack: portainerStack,
+                    response: portainerResponse.data
+                };
+        } catch (error) {
+            const axiosError = error as AxiosError;
+
+            let errorStack: Stack;
+            errorStack = {
+                id: -1,
+                name: "failure"
+            };
+
+            if (axiosError.response) {
+                stackResponse = {
+                    stack: errorStack,
+                    response: axiosError.response.data
+                };
+            } else {
+                stackResponse = {
+                    stack: errorStack,
+                    response: "Failed to obtain response data"
+                }
+            }            
+        }        
+
+        return stackResponse;
     }
 
     /**
@@ -109,7 +136,8 @@ export class PortainerClient {
      *
      * @param payload {UpdateStackPayload} - Payload for the stack to be updated.
      */
-    async updateStack(payload: UpdateStackPayload): Promise<Stack> {
+    async updateStack(payload: UpdateStackPayload): Promise<Stack> {        
+
         const {data}: { data: PortainerStack } = await this.client.put(
             `/stacks/${payload.id}`,
             {
@@ -121,6 +149,7 @@ export class PortainerClient {
                     endpointId: payload.endpoint
                 }
             });
+            
 
         return {
             id: data.Id,

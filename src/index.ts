@@ -15,10 +15,15 @@ async function run() {
 
         core.startGroup('Get current state');
         const stacks = await portainer.getStacks(cfg.portainer.endpoint);
+
+        core.debug(`Found Stacks: ${stacks}`);
+
         let stack = stacks.find(item => item.name === cfg.stack.name);
         core.endGroup();
 
         if (stack) {
+            core.debug(`Attempting to delete stack: ${stack}`);
+
             if (cfg.stack.delete) {
                 core.startGroup('Delete existing stack');
                 core.info(`Delete existing stack (ID: ${stack.id})...`);
@@ -29,6 +34,8 @@ async function run() {
                 core.info("Stack deleted.");
                 core.endGroup();
             } else {
+                core.debug(`Attempting to update stack: ${stack}`);
+
                 core.startGroup('Update existing stack');
                 core.info(`Updating existing stack (ID: ${stack.id}; prune: ${cfg.stack.prune})...`);
                 await portainer.updateStack({
@@ -41,13 +48,22 @@ async function run() {
                 core.endGroup();
             }
         } else {
+            core.debug(`Attempting to create stack: ${cfg.stack.name}`)
+
             core.startGroup('Create new stack');
             core.info("Creating new stack...");
+
+            let createStackResponse: string;
+
             await portainer.createStack({
                 endpoint: cfg.portainer.endpoint,
                 name: cfg.stack.name,
                 file: cfg.stack.file
+            }).then(stackResponse => {
+                createStackResponse = stackResponse.response;
+                core.debug(`Create Stack Response: ${createStackResponse}`);
             })
+
             core.info("Stack created.");
             core.endGroup();
         }

@@ -16,10 +16,14 @@ function parseStackConfig(): StackConfig {
     const filePath = core.getInput('file', {required: true});
     let file = fs.readFileSync(filePath, 'utf-8');
 
+    core.debug(`File before mustache: ${file}`);
+
     if (filePath.split('.').pop() === 'mustache') {
         mustache.escape = JSON.stringify;
         file = mustache.render(file, JSON.parse(core.getInput('variables', {required: false})));
     }
+
+    core.debug(`File after mustache: ${file}`);
 
     return {
         name: core.getInput('name', {required: true}),

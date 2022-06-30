@@ -25,6 +25,11 @@ export interface Stack {
     name: string
 }
 
+export interface StackResponse {
+    stack: Stack
+    response: string
+}
+
 export interface CreateStackPayload {
     name: string
     endpoint: number

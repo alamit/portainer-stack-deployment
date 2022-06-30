@@ -4202,10 +4202,12 @@ function parsePortainerConfig() {
 function parseStackConfig() {
     const filePath = core.getInput('file', { required: true });
     let file = fs.readFileSync(filePath, 'utf-8');
+    core.debug(`File before mustache: ${file}`);
     if (filePath.split('.').pop() === 'mustache') {
         mustache_1.default.escape = JSON.stringify;
         file = mustache_1.default.render(file, JSON.parse(core.getInput('variables', { required: false })));
     }
+    core.debug(`File after mustache: ${file}`);
     return {
         name: core.getInput('name', { required: true }),
         file,
@@ -4273,9 +4275,11 @@ function run() {
             core.endGroup();
             core.startGroup('Get current state');
             const stacks = yield portainer.getStacks(cfg.portainer.endpoint);
+            core.debug(`Found Stacks: ${stacks}`);
             let stack = stacks.find(item => item.name === cfg.stack.name);
             core.endGroup();
             if (stack) {
+                core.debug(`Attempting to delete stack: ${stack}`);
                 if (cfg.stack.delete) {
                     core.startGroup('Delete existing stack');
                     core.info(`Delete existing stack (ID: ${stack.id})...`);
@@ -4287,6 +4291,7 @@ function run() {
                     core.endGroup();
                 }
                 else {
+                    core.debug(`Attempting to update stack: ${stack}`);
                     core.startGroup('Update existing stack');
                     core.info(`Updating existing stack (ID: ${stack.id}; prune: ${cfg.stack.prune})...`);
                     yield portainer.updateStack({
@@ -4300,12 +4305,17 @@ function run() {
                 }
             }
             else {
+                core.debug(`Attempting to create stack: ${cfg.stack.name}`);
                 core.startGroup('Create new stack');
                 core.info("Creating new stack...");
+                let createStackResponse;
                 yield portainer.createStack({
                     endpoint: cfg.portainer.endpoint,
                     name: cfg.stack.name,
                     file: cfg.stack.file
+                }).then(stackResponse => {
+                    createStackResponse = stackResponse.response;
+                    core.debug(`Create Stack Response: ${createStackResponse}`);
                 });
                 core.info("Stack created.");
                 core.endGroup();
@@ -4417,20 +4427,44 @@ class PortainerClient {
      */
     createStack(payload) {
         return __awaiter(this, void 0, void 0, function* () {
-            const { data } = yield this.client.post('/stacks', {
-                name: payload.name,
-                stackFileContent: payload.file
-            }, {
-                params: {
-                    endpointId: payload.endpoint,
-                    method: 'string',
-                    type: 2
+            let stackResponse;
+            try {
+                const { portainerStack, portainerResponse } = yield this.client.post('/stacks', {
+                    name: payload.name,
+                    stackFileContent: payload.file
+                }, {
+                    params: {
+                        endpointId: payload.endpoint,
+                        method: 'string',
+                        type: 2
+                    }
+                });
+                stackResponse = {
+                    stack: portainerStack,
+                    response: portainerResponse.data
+                };
+            }
+            catch (error) {
+                const axiosError = error;
+                let errorStack;
+                errorStack = {
+                    id: -1,
+                    name: "failure"
+                };
+                if (axiosError.response) {
+                    stackResponse = {
+                        stack: errorStack,
+                        response: axiosError.response.data
+                    };
                 }
-            });
-            return {
-                id: data.Id,
-                name: data.Name
-            };
+                else {
+                    stackResponse = {
+                        stack: errorStack,
+                        response: "Failed to obtain response data"
+                    };
+                }
+            }
+            return stackResponse;
         });
     }
     /**
