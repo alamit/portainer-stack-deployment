@@ -4276,7 +4276,7 @@ function run() {
             core.endGroup();
             core.startGroup('Get current state');
             const stacks = yield portainer.getStacks(cfg.portainer.endpoint);
-            core.debug(`Found Stacks: ${stacks}`);
+            core.debug(`Found Stacks`);
             let stack = stacks.find(item => item.name === cfg.stack.name);
             core.endGroup();
             if (stack) {

@@ -17,7 +17,7 @@ async function run() {
         core.startGroup('Get current state');
         const stacks = await portainer.getStacks(cfg.portainer.endpoint);
 
-        core.debug(`Found Stacks: ${stacks}`);
+        core.debug(`Found Stacks`);
 
         let stack = stacks.find(item => item.name === cfg.stack.name);
         core.endGroup();
