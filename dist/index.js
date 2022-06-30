@@ -4264,6 +4264,7 @@ const core = __importStar(__nccwpck_require__(186));
 const config = __importStar(__nccwpck_require__(373));
 const portainer_1 = __nccwpck_require__(162);
 function run() {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const cfg = config.parse();
@@ -4314,15 +4315,12 @@ function run() {
                         endpoint: cfg.portainer.endpoint,
                         name: cfg.stack.name,
                         file: cfg.stack.file
-                    }).then(stackResponse => {
-                        createStackResponse = stackResponse.response;
-                        core.debug(`Create Stack Response: ${createStackResponse}`);
                     });
                 }
                 catch (error) {
                     const axiosError = error;
                     if (axiosError) {
-                        core.debug(`Axios Error: ${axiosError}`);
+                        core.debug(`Axios Error: ${(_a = axiosError.response) === null || _a === void 0 ? void 0 : _a.data}`);
                     }
                 }
                 core.info("Stack created.");

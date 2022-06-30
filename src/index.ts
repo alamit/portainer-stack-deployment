@@ -61,14 +61,11 @@ async function run() {
                     endpoint: cfg.portainer.endpoint,
                     name: cfg.stack.name,
                     file: cfg.stack.file
-                }).then(stackResponse => {
-                    createStackResponse = stackResponse.response;
-                    core.debug(`Create Stack Response: ${createStackResponse}`);
                 })
             } catch (error) {
                 const axiosError = error as AxiosError;
                 if (axiosError) {
-                    core.debug(`Axios Error: ${axiosError}`)
+                    core.debug(`Axios Error: ${axiosError.response?.data}`);
                 }
             }
 
