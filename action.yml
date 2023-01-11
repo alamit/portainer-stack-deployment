@@ -21,7 +21,7 @@ inputs:
     required: true
   file:
     description: Location of the stack file (Relative from the root directory).
-    required: true
+    required: false
   variables:
     description: Variables to render the stack file (JSON Format).
     required: false
