@@ -13,6 +13,9 @@ inputs:
   portainer-endpoint:
     description: Portainer Endpoint ID.
     required: true
+  portainer-external:
+    description: Portainer External
+    required: true
   name:
     description: Name of the stack to be deployed or updated.
     required: true
