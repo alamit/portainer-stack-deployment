@@ -14,7 +14,7 @@ function parsePortainerConfig(): PortainerConfig {
 }
 
 function parseStackConfig(): StackConfig {
-    const filePath = core.getInput('file', {required: true});
+    const filePath = core.getInput('file', {required: false});
     let file = fs.readFileSync(filePath, 'utf-8');
 
     core.debug(`File before mustache: ${file}`);
