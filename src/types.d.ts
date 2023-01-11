@@ -46,6 +46,7 @@ export interface UpdateStackPayload {
 export interface DeleteStackPayload {
     id: number
     endpoint: number
+    external: boolean
 }
 
 /**

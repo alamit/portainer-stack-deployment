@@ -1,7 +1,7 @@
 {
   "name": "portainer-stack-deploy",
   "version": "1.0.0",
-  "description": "Github Action for deploying docker swarm stacks through Portainer API.",
+  "description": "Github Action for deploying docker stacks through Portainer API.",
   "main": "dist/index.js",
   "scripts": {
     "build": "ncc build src/index.ts --source-map --license licenses.txt"
@@ -11,12 +11,12 @@
     "url": "git+https://github.com/kgierke/portainer-stack-deploy.git"
   },
   "keywords": [],
-  "author": "Kurt Gierke <mail@kurtgierke.com> (https://www.kurtgierke.com)",
+  "author": "Brett Carney",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/kgierke/portainer-stack-deploy/issues"
+    "url": "https://github.com/bcarneypba/portainer-stack-deploy/issues"
   },
-  "homepage": "https://github.com/kgierke/portainer-stack-deploy#readme",
+  "homepage": "https://github.com/bcarneypba/portainer-stack-deploy#readme",
   "dependencies": {
     "@actions/core": "^1.10.0",
     "axios": "^0.21.4",

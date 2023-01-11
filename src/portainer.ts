@@ -145,8 +145,9 @@ export class PortainerClient {
             `/stacks/${payload.id}`,
             {
                 params: {
-                    external: true,
-                    endpointId: payload.endpoint
+                    external: payload.external,
+                    endpointId: payload.endpoint,
+                    id: payload.id
                 }
             }
         );
