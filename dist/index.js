@@ -6549,7 +6549,6 @@ function run() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const cfg = config.parse();
-            core.debug(`Stack parsed: ${cfg.stack.file}`);
             core.startGroup('Authentication');
             const portainer = new portainer_1.PortainerClient(cfg.portainer.url);
             yield portainer.login(cfg.portainer.username, cfg.portainer.password);
@@ -6588,9 +6587,10 @@ function run() {
                 }
             }
             else {
-                core.debug(`Attempting to create stack: ${cfg.stack.name}`);
                 core.startGroup('Create new stack');
                 core.info("Creating new stack...");
+                core.info(`Attempting to create stack: ${cfg.stack.name}`);
+                core.info(`Stack parsed: ${cfg.stack.file}`);
                 let createStackResponse;
                 try {
                     yield portainer.createStack({
