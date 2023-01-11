@@ -6589,9 +6589,8 @@ function run() {
             else {
                 core.startGroup('Create new stack');
                 core.info("Creating new stack...");
-                core.info(`Attempting to create stack: ${cfg.stack.name}`);
-                core.info(`Stack parsed: ${cfg.stack.file}`);
-                let createStackResponse;
+                core.debug(`Attempting to create stack: ${cfg.stack.name}`);
+                core.debug(`Stack parsed: ${cfg.stack.file}`);
                 try {
                     yield portainer.createStack({
                         endpoint: cfg.portainer.endpoint,
@@ -6715,8 +6714,7 @@ class PortainerClient {
      */
     createStack(payload) {
         return __awaiter(this, void 0, void 0, function* () {
-            let stackResponse;
-            const { portainerStack, portainerResponse } = yield this.client.post('/stacks', {
+            yield this.client.post('/stacks', {
                 name: payload.name,
                 stackFileContent: payload.file
             }, {
@@ -6726,11 +6724,6 @@ class PortainerClient {
                     type: 2
                 }
             });
-            stackResponse = {
-                stack: portainerStack,
-                response: portainerResponse.data
-            };
-            return stackResponse;
         });
     }
     /**

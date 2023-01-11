@@ -51,9 +51,8 @@ async function run() {
         } else {            
             core.startGroup('Create new stack');
             core.info("Creating new stack...");
-            core.info(`Attempting to create stack: ${cfg.stack.name}`)
-            core.info(`Stack parsed: ${cfg.stack.file}`);
-            let createStackResponse: string;
+            core.debug(`Attempting to create stack: ${cfg.stack.name}`)
+            core.debug(`Stack parsed: ${cfg.stack.file}`);
 
             try {
                 await portainer.createStack({

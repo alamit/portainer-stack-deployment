@@ -1,6 +1,6 @@
-import axios, {AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse} from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { countReset } from 'console';
-import {CreateStackPayload, DeleteStackPayload, PortainerStack, Stack, StackResponse, UpdateStackPayload} from "./types";
+import { CreateStackPayload, DeleteStackPayload, PortainerStack, Stack, StackResponse, UpdateStackPayload } from "./types";
 
 export class PortainerClient {
     token = null;
@@ -37,7 +37,7 @@ export class PortainerClient {
      * @param password {String} - password to authenticate with.
      */
     async login(username: string, password: string) {
-        const {data} = await this.client.post('/auth', {
+        const { data } = await this.client.post('/auth', {
             username,
             password
         });
@@ -51,7 +51,7 @@ export class PortainerClient {
      * @param endpoint {Number} - Portainer endpoint ID.
      */
     async getSwarmId(endpoint: number): Promise<number> {
-        const {data} = await this.client.get(`/endpoints/${endpoint}/docker/swarm`);
+        const { data } = await this.client.get(`/endpoints/${endpoint}/docker/swarm`);
 
         return data.ID;
     }
@@ -63,7 +63,7 @@ export class PortainerClient {
      */
     async getStacks(endpoint: number): Promise<Stack[]> {
         const swarmId = await this.getSwarmId(endpoint);
-        const {data}: { data: PortainerStack[] } = await this.client.get(
+        const { data }: { data: PortainerStack[] } = await this.client.get(
             '/stacks',
             {
                 params: {
@@ -84,10 +84,9 @@ export class PortainerClient {
      *
      * @param payload {CreateStackPayload} - Payload for the stack to be created.
      */
-    async createStack(payload: CreateStackPayload): Promise<StackResponse> {
-        let stackResponse: StackResponse;
+    async createStack(payload: CreateStackPayload) {
 
-        const {portainerStack, portainerResponse}: { portainerStack: Stack, portainerResponse: AxiosResponse } = await this.client.post(
+        await this.client.post(
             '/stacks',
             {
                 name: payload.name,
@@ -99,14 +98,8 @@ export class PortainerClient {
                     method: 'string',
                     type: 2
                 }
-            });                
-
-            stackResponse = {
-                stack: portainerStack,
-                response: portainerResponse.data
-            };      
-
-        return stackResponse;
+            }
+        );
     }
 
     /**
@@ -114,9 +107,9 @@ export class PortainerClient {
      *
      * @param payload {UpdateStackPayload} - Payload for the stack to be updated.
      */
-    async updateStack(payload: UpdateStackPayload): Promise<Stack> {        
+    async updateStack(payload: UpdateStackPayload): Promise<Stack> {
 
-        const {data}: { data: PortainerStack } = await this.client.put(
+        const { data }: { data: PortainerStack } = await this.client.put(
             `/stacks/${payload.id}`,
             {
                 stackFileContent: payload.file,
@@ -127,7 +120,7 @@ export class PortainerClient {
                     endpointId: payload.endpoint
                 }
             });
-            
+
 
         return {
             id: data.Id,
