@@ -11,6 +11,7 @@ export interface PortainerConfig {
     username: string
     password: string
     endpoint: number
+    external: boolean
 }
 
 export interface StackConfig {

@@ -6464,7 +6464,8 @@ function parsePortainerConfig() {
         url: new URL(core.getInput('portainer-url', { required: true })),
         username: core.getInput('portainer-username', { required: true }),
         password: core.getInput('portainer-password', { required: true }),
-        endpoint: parseInt(core.getInput('portainer-endpoint', { required: true }))
+        endpoint: parseInt(core.getInput('portainer-endpoint', { required: true })),
+        external: Boolean(JSON.parse(core.getInput('portainer-external', { required: true })))
     };
 }
 function parseStackConfig() {
@@ -6558,7 +6559,8 @@ function run() {
                     core.info(`Delete existing stack (ID: ${stack.id})...`);
                     yield portainer.deleteStack({
                         id: stack.id,
-                        endpoint: cfg.portainer.endpoint
+                        endpoint: cfg.portainer.endpoint,
+                        external: cfg.portainer.external
                     });
                     core.info("Stack deleted.");
                     core.endGroup();
@@ -6753,8 +6755,9 @@ class PortainerClient {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.client.delete(`/stacks/${payload.id}`, {
                 params: {
-                    external: true,
-                    endpointId: payload.endpoint
+                    external: payload.external,
+                    endpointId: payload.endpoint,
+                    id: payload.id
                 }
             });
         });

@@ -30,7 +30,8 @@ async function run() {
                 core.info(`Delete existing stack (ID: ${stack.id})...`);
                 await portainer.deleteStack({
                     id: stack.id,
-                    endpoint: cfg.portainer.endpoint
+                    endpoint: cfg.portainer.endpoint,
+                    external: cfg.portainer.external
                 });
                 core.info("Stack deleted.");
                 core.endGroup();
