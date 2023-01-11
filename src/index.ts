@@ -48,12 +48,11 @@ async function run() {
                 core.info("Stack updated.");
                 core.endGroup();
             }
-        } else {
-            core.debug(`Attempting to create stack: ${cfg.stack.name}`)
-            core.debug(`Stack parsed: ${cfg.stack.file}`);
+        } else {            
             core.startGroup('Create new stack');
             core.info("Creating new stack...");
-
+            core.info(`Attempting to create stack: ${cfg.stack.name}`)
+            core.info(`Stack parsed: ${cfg.stack.file}`);
             let createStackResponse: string;
 
             try {
