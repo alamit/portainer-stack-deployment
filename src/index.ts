@@ -5,8 +5,7 @@ import {PortainerClient} from './portainer';
 
 async function run() {
     try {
-        const cfg = config.parse();
-        core.debug(`Stack parsed: ${cfg.stack.file}`);
+        const cfg = config.parse();        
 
         core.startGroup('Authentication');
         const portainer = new PortainerClient(cfg.portainer.url);
@@ -51,7 +50,7 @@ async function run() {
             }
         } else {
             core.debug(`Attempting to create stack: ${cfg.stack.name}`)
-
+            core.debug(`Stack parsed: ${cfg.stack.file}`);
             core.startGroup('Create new stack');
             core.info("Creating new stack...");
 
