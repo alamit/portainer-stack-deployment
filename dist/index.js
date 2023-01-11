@@ -6470,6 +6470,14 @@ function parsePortainerConfig() {
 }
 function parseStackConfig() {
     const filePath = core.getInput('file', { required: false });
+    if (filePath == "") {
+        return {
+            name: core.getInput('name', { required: true }),
+            file: "",
+            delete: !!core.getInput('delete', { required: false }).length,
+            prune: !!core.getInput('prune', { required: false }).length
+        };
+    }
     let file = fs.readFileSync(filePath, 'utf-8');
     core.debug(`File before mustache: ${file}`);
     if (filePath.split('.').pop() === 'mustache') {
