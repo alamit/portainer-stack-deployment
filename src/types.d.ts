@@ -2,58 +2,48 @@
  * Application specific interfaces
  */
 export interface Config {
-    portainer: PortainerConfig
-    stack: StackConfig
+  portainer: PortainerConfig;
+  stack: StackConfig;
 }
 
 export interface PortainerConfig {
-    url: URL
-    username: string
-    password: string
-    endpoint: number
-    external: boolean
+  url: URL;
+  apiKey: string;
+  endpoint: string;
 }
 
 export interface StackConfig {
-    name: string
-    file: string
-    delete: boolean
-    prune: boolean
+  name: string;
+  file: string;
 }
 
 export interface Stack {
-    id: number
-    name: string
+  id: number;
+  name: string;
 }
 
 export interface StackResponse {
-    stack: Stack
-    response: string
+  stack: Stack;
+  response: string;
 }
 
 export interface CreateStackPayload {
-    name: string
-    endpoint: number
-    file: string
+  name: string;
+  endpoint: number;
+  file: string;
 }
 
 export interface UpdateStackPayload {
-    id: number
-    endpoint: number
-    file: string
-    prune: boolean
-}
-
-export interface DeleteStackPayload {
-    id: number
-    endpoint: number
-    external: boolean
+  id: number;
+  endpoint: number;
+  file: string;
+  prune: boolean;
 }
 
 /**
  * Portainer specific interfaces
  */
 export interface PortainerStack {
-    Id: number
-    Name: string
+  Id: number;
+  Name: string;
 }

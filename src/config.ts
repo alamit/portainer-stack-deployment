@@ -1,52 +1,53 @@
-import * as core from '@actions/core';
-import * as fs from 'fs';
-import mustache from 'mustache';
-import {Config, PortainerConfig, StackConfig} from "./types";
+import * as core from "@actions/core";
+import * as fs from "fs";
+import mustache from "mustache";
+import { Config, PortainerConfig, StackConfig } from "./types";
+import error from "./utils";
 
 function parsePortainerConfig(): PortainerConfig {
-    return {
-        url: new URL(core.getInput('portainer-url', {required: true})),
-        username: core.getInput('portainer-username', {required: true}),
-        password: core.getInput('portainer-password', {required: true}),
-        endpoint: parseInt(core.getInput('portainer-endpoint', {required: true})),
-        external: Boolean(JSON.parse(core.getInput('portainer-external', {required: true})))
-    };
+  return {
+    url: new URL(process.env.PORTAINER_URL ?? error("PORTAINER_URL not set")),
+    apiKey: process.env.PORTAINER_API_KEY ?? error("PORTAINER_API_KEY not set"),
+    endpoint: process.env.APP_ENV ?? error("APP_ENV not set"),
+  };
 }
 
 function parseStackConfig(): StackConfig {
-    const filePath = core.getInput('file', {required: false});
+  if (!process.env.APP_ENV) error("APP_ENV not set");
+  const filePath = `docker-compose.${process.env.APP_ENV}.yml`;
+  const name =
+    process.env.PORTAINER_STACK_NAME ?? error("PORTAINER_STACK_NAME not set");
 
-    if (filePath == "") {
-        return {
-            name: core.getInput('name', {required: true}),
-            file: "",
-            delete: !!core.getInput('delete', {required: false}).length,
-            prune: !!core.getInput('prune', {required: false}).length
-        };
-    }
+  const hostnames = JSON.parse(
+    fs.readFileSync(core.getInput("hostnames", { required: true }), "utf-8")
+  );
+  const hostname = hostnames[process.env.APP_ENV];
+  if (!hostname) error(`Hostname for ${process.env.APP_ENV} not found`);
 
-    let file = fs.readFileSync(filePath, 'utf-8');
+  let file = fs.readFileSync(filePath, "utf-8");
 
-    core.debug(`File before mustache: ${file}`);
+  core.debug(`File before mustache: ${file}`);
 
-    if (filePath.split('.').pop() === 'mustache') {
-        mustache.escape = JSON.stringify;
-        file = mustache.render(file, JSON.parse(core.getInput('variables', {required: false})));
-    }
+  if (filePath.split(".").pop() === "mustache") {
+    mustache.escape = JSON.stringify;
+    file = mustache.render(file, {
+      REPO_NAME: core.getInput("repo-name", { required: true }),
+      TAG: process.env.APP_ENV,
+      HOSTNAME: hostname,
+    });
+  }
 
-    core.debug(`File after mustache: ${file}`);
+  core.debug(`File after mustache: ${file}`);
 
-    return {
-        name: core.getInput('name', {required: true}),
-        file,
-        delete: !!core.getInput('delete', {required: false}).length,
-        prune: !!core.getInput('prune', {required: false}).length
-    };
+  return {
+    name: core.getInput("name", { required: true }),
+    file,
+  };
 }
 
 export function parse(): Config {
-    return {
-        portainer: parsePortainerConfig(),
-        stack: parseStackConfig()
-    };
+  return {
+    portainer: parsePortainerConfig(),
+    stack: parseStackConfig(),
+  };
 }
