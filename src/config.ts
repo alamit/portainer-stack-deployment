@@ -15,8 +15,8 @@ function parsePortainerConfig(): PortainerConfig {
 function parseStackConfig(): StackConfig {
   if (!process.env.APP_ENV) error("APP_ENV not set");
   const filePath = `docker-compose.${process.env.APP_ENV}.yml.mustache`;
-  const name =
-    process.env.PORTAINER_STACK_NAME ?? error("PORTAINER_STACK_NAME not set");
+  const repoName = core.getInput("repo-name", { required: true });
+  const name = `${repoName}-${process.env.APP_ENV}`;
 
   const hostnames = JSON.parse(
     fs.readFileSync(core.getInput("hostnames", { required: true }), "utf-8")
@@ -31,7 +31,7 @@ function parseStackConfig(): StackConfig {
   if (filePath.split(".").pop() === "mustache") {
     mustache.escape = JSON.stringify;
     file = mustache.render(file, {
-      REPO_NAME: core.getInput("repo-name", { required: true }),
+      REPO_NAME: repoName,
       TAG: process.env.APP_ENV,
       HOSTNAME: hostname,
     });
