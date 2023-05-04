@@ -18,9 +18,7 @@ function parseStackConfig(): StackConfig {
   const repoName = core.getInput("repo-name", { required: true });
   const name = `${repoName}-${process.env.APP_ENV}`;
 
-  const hostnames = JSON.parse(
-    fs.readFileSync(core.getInput("hostnames", { required: true }), "utf-8")
-  );
+  const hostnames = JSON.parse(fs.readFileSync("hostnames.json", "utf-8"));
   const hostname = hostnames[process.env.APP_ENV];
   if (!hostname) error(`Hostname for ${process.env.APP_ENV} not found`);
 
