@@ -14,15 +14,11 @@ jobs:
     - name: Clone Repository
 -     uses: actions/checkout@v2
     - name: Deploy Stack
-      uses: bcarneypba/portainer-stack-deployment@v2
+      uses: alamit/portainer-stack-deployment@latest
       with:
-        portainer-url: "https://portainer.example.com"
-        portainer-username: "admin"
-        portainer-password: "password"
-        portainer-endpoint: 2
-        name: stack-name
+        hostnames: path/to/hostnames.json
         file: path/to/stackfile.yml.mustache
-        variables: '{"image": "hello-world"}'
+        repo-name: repository-name
 ```
 
 ## Inputs

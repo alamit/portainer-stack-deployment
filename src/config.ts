@@ -14,7 +14,7 @@ function parsePortainerConfig(): PortainerConfig {
 
 function parseStackConfig(): StackConfig {
   if (!process.env.APP_ENV) error("APP_ENV not set");
-  const filePath = `docker-compose.${process.env.APP_ENV}.yml`;
+  const filePath = `docker-compose.${process.env.APP_ENV}.yml.mustache`;
   const name =
     process.env.PORTAINER_STACK_NAME ?? error("PORTAINER_STACK_NAME not set");
 
@@ -40,7 +40,7 @@ function parseStackConfig(): StackConfig {
   core.debug(`File after mustache: ${file}`);
 
   return {
-    name: core.getInput("name", { required: true }),
+    name,
     file,
   };
 }

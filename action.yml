@@ -1,39 +1,15 @@
 name: Portainer Stack Deployment
-description: Github Action for deploying docker swarm stacks through Portainer API.
+description: Github Action for deploying docker compose stacks through Portainer API using dotenv-vault.
 inputs:
-  portainer-url:
-    description: URL of the portainer API.
+  repo-name:
+    description: Name of the repository.
     required: true
-  portainer-username:
-    description: Username to authenticate against the API.
-    required: true
-  portainer-password:
-    description: Password to authenticate against the API.
-    required: true
-  portainer-endpoint:
-    description: Portainer Endpoint ID.
-    required: true
-  portainer-external:
-    description: Portainer External
-    required: true
-  name:
-    description: Name of the stack to be deployed or updated.
+  hostnames:
+    description: Path of hostnames.json file (Definining hostnames for each env).
     required: true
   file:
     description: Location of the stack file (Relative from the root directory).
     required: false
-  variables:
-    description: Variables to render the stack file (JSON Format).
-    required: false
-    default: "{}"
-  delete:
-    description: Option to delete a stack.
-    required: false
-    default: ""
-  prune:
-    description: Remove missing/obsolete services from stack on update.
-    required: false
-    default: ""
 runs:
   using: node16
   main: dist/index.js
