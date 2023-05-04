@@ -74,12 +74,18 @@ export class PortainerClient {
       {
         name: payload.name,
         stackFileContent: payload.file,
+        env: [
+          {
+            name: "DOTENV_KEY",
+            value: process.env.DOTENV_KEY,
+          },
+        ],
       },
       {
         params: {
           endpointId: payload.endpoint,
           method: "string",
-          type: 2,
+          type: 1,
         },
       }
     );
@@ -96,6 +102,12 @@ export class PortainerClient {
       {
         stackFileContent: payload.file,
         prune: payload.prune,
+        env: [
+          {
+            name: "DOTENV_KEY",
+            value: process.env.DOTENV_KEY,
+          },
+        ],
       },
       {
         params: {

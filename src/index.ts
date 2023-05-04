@@ -4,6 +4,7 @@ import * as config from "./config";
 import { PortainerClient } from "./portainer";
 import error from "./utils";
 
+if (!process.env.DOTENV_KEY) error("DOTENV_KEY not set");
 require("dotenv-vault-core").config();
 async function run() {
   try {
